@@ -2,7 +2,7 @@
    STUDYFLOW - BACKEND SERVER
    Lưu trữ dữ liệu người dùng dưới dạng file JSON trên Railway Volume.
    Mặc định đường dẫn volume là /date (đổi bằng biến môi trường DATA_DIR).
-   + Socket.IO cho signaling cuộc gọi video/audio.
+   + Socket.IO cho signaling cuộc gọi video/audio & đồng bộ nhắn tin/kết bạn real-time.
    ========================================================================== */
 
 const express = require('express');
@@ -58,6 +58,57 @@ function writeJsonFile(filePath, data) {
     fs.renameSync(tmpPath, filePath);
 }
 
+// Hàm hợp nhất (merge) dữ liệu System DB an toàn chống ghi đè/mất mát
+function mergeSystemDB(incomingData) {
+    const currentData = readJsonFile(SYSTEM_DB_PATH, { users: [], friendships: [], messages: [] });
+    const { users = [], friendships = [], messages = [] } = incomingData || {};
+
+    // 1. Merge users (theo userId)
+    const usersMap = new Map();
+    (currentData.users || []).forEach(u => { if (u && u.userId) usersMap.set(u.userId, u); });
+    users.forEach(u => { if (u && u.userId) usersMap.set(u.userId, u); });
+
+    // 2. Merge friendships (theo id hoặc cặp user1-user2)
+    const friendshipsMap = new Map();
+    (currentData.friendships || []).forEach(f => {
+        if (f) {
+            const key = f.id || `${f.user1}_${f.user2}`;
+            friendshipsMap.set(key, f);
+        }
+    });
+    friendships.forEach(f => {
+        if (f) {
+            const key = f.id || `${f.user1}_${f.user2}`;
+            friendshipsMap.set(key, f);
+        }
+    });
+
+    // 3. Merge messages (theo id) - Lọc bỏ tin nhắn hết hạn 7 ngày
+    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const messagesMap = new Map();
+
+    (currentData.messages || []).forEach(m => {
+        if (m && m.id && (now - m.timestamp < SEVEN_DAYS_MS)) {
+            messagesMap.set(m.id, m);
+        }
+    });
+    messages.forEach(m => {
+        if (m && m.id && (now - m.timestamp < SEVEN_DAYS_MS)) {
+            messagesMap.set(m.id, m);
+        }
+    });
+
+    const merged = {
+        users: Array.from(usersMap.values()),
+        friendships: Array.from(friendshipsMap.values()),
+        messages: Array.from(messagesMap.values()).sort((a, b) => a.timestamp - b.timestamp)
+    };
+
+    writeJsonFile(SYSTEM_DB_PATH, merged);
+    return merged;
+}
+
 /* ---------------- SYSTEM DB (users / friendships / messages) ---------------- */
 
 // Lấy toàn bộ system DB
@@ -66,16 +117,12 @@ app.get('/api/system-db', (req, res) => {
     res.json(data);
 });
 
-// Ghi đè toàn bộ system DB (gọi mỗi khi có thay đổi: đăng ký, kết bạn, chat, xóa...)
+// Ghi đè / hợp nhất system DB
 app.put('/api/system-db', (req, res) => {
     try {
-        const { users, friendships, messages } = req.body || {};
-        writeJsonFile(SYSTEM_DB_PATH, {
-            users: users || [],
-            friendships: friendships || [],
-            messages: messages || []
-        });
-        res.json({ ok: true });
+        const updated = mergeSystemDB(req.body || {});
+        io.emit('system-db-updated', updated);
+        res.json({ ok: true, data: updated });
     } catch (err) {
         console.error(err);
         res.status(500).json({ ok: false, error: 'save_failed' });
@@ -95,7 +142,7 @@ app.get('/api/user-data/:userId', (req, res) => {
     res.json(data);
 });
 
-// Lưu / ghi đè dữ liệu của 1 người dùng (mỗi lần app gọi saveUserData())
+// Lưu / ghi đè dữ liệu của 1 người dùng
 app.put('/api/user-data/:userId', (req, res) => {
     const userId = safeUserId(req.params.userId);
     if (!userId) return res.status(400).json({ error: 'invalid_user_id' });
@@ -110,7 +157,7 @@ app.put('/api/user-data/:userId', (req, res) => {
     }
 });
 
-// Xóa hẳn dữ liệu của 1 người dùng (ví dụ khi người dùng xóa tài khoản)
+// Xóa hẳn dữ liệu của 1 người dùng
 app.delete('/api/user-data/:userId', (req, res) => {
     const userId = safeUserId(req.params.userId);
     if (!userId) return res.status(400).json({ error: 'invalid_user_id' });
@@ -136,11 +183,9 @@ app.get('*', (req, res) => {
 });
 
 /* ==========================================================================
-   SOCKET.IO - SIGNALING CHO CUỘC GỌI VIDEO/AUDIO
-   Quản lý trạng thái online và chuyển tiếp tín hiệu cuộc gọi giữa 2 user.
+   SOCKET.IO - SIGNALING CUỘC GỌI VÀ ĐỒNG BỘ REAL-TIME (TIN NHẮN & KẾT BẠN)
    ========================================================================== */
 
-// Map: userId -> socketId (theo dõi ai đang online)
 const onlineUsers = new Map();
 
 io.on('connection', (socket) => {
@@ -153,18 +198,35 @@ io.on('connection', (socket) => {
         socket.userId = userId;
         console.log(`[Socket] ${userId} đã online (${socket.id})`);
 
-        // Thông báo cho tất cả client biết danh sách online cập nhật
         io.emit('online-users', Array.from(onlineUsers.keys()));
     });
 
-    // Client yêu cầu danh sách user online hiện tại
     socket.on('get-online-users', () => {
         socket.emit('online-users', Array.from(onlineUsers.keys()));
     });
 
-    // Gửi yêu cầu gọi tới user đích
+    // Khi có dữ liệu System DB mới (đăng ký, kết bạn, nhắn tin)
+    socket.on('sync-system-db', (data) => {
+        const updated = mergeSystemDB(data);
+        io.emit('system-db-updated', updated);
+    });
+
+    // Gửi tin nhắn mới real-time
+    socket.on('send-message', (msgData) => {
+        if (!msgData || !msgData.id) return;
+        const updated = mergeSystemDB({ messages: [msgData] });
+        io.emit('system-db-updated', updated);
+    });
+
+    // Tạo kết bạn mới real-time
+    socket.on('add-friendship', (friendshipData) => {
+        if (!friendshipData || !friendshipData.id) return;
+        const updated = mergeSystemDB({ friendships: [friendshipData] });
+        io.emit('system-db-updated', updated);
+    });
+
+    // Call signaling events...
     socket.on('call-request', (data) => {
-        // data: { callerId, callerName, targetUserId, callType: 'video' | 'audio', callerPeerId }
         const targetSocketId = onlineUsers.get(data.targetUserId);
         if (targetSocketId) {
             io.to(targetSocketId).emit('incoming-call', {
@@ -174,7 +236,6 @@ io.on('connection', (socket) => {
                 callerPeerId: data.callerPeerId
             });
         } else {
-            // User đích không online
             socket.emit('call-failed', {
                 reason: 'offline',
                 message: 'Người dùng không trực tuyến.'
@@ -182,9 +243,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // User đích chấp nhận cuộc gọi
     socket.on('call-accepted', (data) => {
-        // data: { callerId, accepterPeerId }
         const callerSocketId = onlineUsers.get(data.callerId);
         if (callerSocketId) {
             io.to(callerSocketId).emit('call-accepted', {
@@ -193,9 +252,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // User đích từ chối cuộc gọi
     socket.on('call-rejected', (data) => {
-        // data: { callerId, reason }
         const callerSocketId = onlineUsers.get(data.callerId);
         if (callerSocketId) {
             io.to(callerSocketId).emit('call-rejected', {
@@ -204,9 +261,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Khi một bên kết thúc cuộc gọi
     socket.on('call-ended', (data) => {
-        // data: { targetUserId }
         const targetSocketId = onlineUsers.get(data.targetUserId);
         if (targetSocketId) {
             io.to(targetSocketId).emit('call-ended', {
@@ -215,7 +270,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // User bật/tắt camera - thông báo cho đối phương
     socket.on('toggle-camera', (data) => {
         const targetSocketId = onlineUsers.get(data.targetUserId);
         if (targetSocketId) {
@@ -225,7 +279,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Khi socket disconnect
     socket.on('disconnect', () => {
         if (socket.userId) {
             onlineUsers.delete(socket.userId);
@@ -238,5 +291,5 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
     console.log(`StudyFlow server đang chạy tại cổng ${PORT}`);
     console.log(`Dữ liệu được lưu tại: ${DATA_DIR}`);
-    console.log(`Socket.IO signaling đã sẵn sàng cho cuộc gọi video/audio.`);
+    console.log(`Socket.IO signaling & real-time messaging đã sẵn sàng.`);
 });

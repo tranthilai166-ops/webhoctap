@@ -19,13 +19,42 @@ async function syncUserDataToServer(userId, userData) {
     }
 }
 
+function updateLocalSystemDB(serverData) {
+    if (!serverData) return;
+    const usersMap = new Map();
+    (systemDB.users || []).forEach(u => u && u.userId && usersMap.set(u.userId, u));
+    (serverData.users || []).forEach(u => u && u.userId && usersMap.set(u.userId, u));
+
+    const friendshipsMap = new Map();
+    (systemDB.friendships || []).forEach(f => f && f.id && friendshipsMap.set(f.id, f));
+    (serverData.friendships || []).forEach(f => f && f.id && friendshipsMap.set(f.id, f));
+
+    const messagesMap = new Map();
+    (systemDB.messages || []).forEach(m => m && m.id && messagesMap.set(m.id, m));
+    (serverData.messages || []).forEach(m => m && m.id && messagesMap.set(m.id, m));
+
+    systemDB.users = Array.from(usersMap.values());
+    systemDB.friendships = Array.from(friendshipsMap.values());
+    systemDB.messages = Array.from(messagesMap.values()).sort((a, b) => a.timestamp - b.timestamp);
+
+    localStorage.setItem('studyflow_users_db', JSON.stringify(systemDB.users));
+    localStorage.setItem('studyflow_friendships', JSON.stringify(systemDB.friendships));
+    localStorage.setItem('studyflow_messages', JSON.stringify(systemDB.messages));
+}
+
 async function syncSystemDBToServer() {
     try {
-        await fetch(`${API_BASE}/api/system-db`, {
+        const res = await fetch(`${API_BASE}/api/system-db`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(systemDB)
         });
+        if (res.ok) {
+            const result = await res.json();
+            if (result && result.data) {
+                updateLocalSystemDB(result.data);
+            }
+        }
     } catch (err) {
         console.warn('Không thể đồng bộ system DB lên server (đang offline?):', err);
     }
@@ -522,7 +551,7 @@ function initChatSystem() {
     const sendChatForm = document.getElementById('chat-send-form');
 
     // Search & Add Friend by User ID
-    searchForm?.addEventListener('submit', (e) => {
+    searchForm?.addEventListener('submit', async (e) => {
         e.preventDefault();
         if (!currentUser) {
             alert('Vui lòng đăng nhập trước khi kết bạn!');
@@ -538,7 +567,13 @@ function initChatSystem() {
             return;
         }
 
-        const targetUser = systemDB.users.find(u => u.userId === searchId);
+        // Tải lại DB mới nhất từ server để đảm bảo không bị thiếu user vừa đăng ký
+        const latestServerDB = await fetchSystemDBFromServer();
+        if (latestServerDB) {
+            updateLocalSystemDB(latestServerDB);
+        }
+
+        const targetUser = systemDB.users.find(u => u && u.userId === searchId);
         if (!targetUser) {
             resultEl.innerHTML = `<span class="text-danger">Không tìm thấy người dùng với User ID "@${searchId}"!</span>`;
             return;
@@ -567,6 +602,11 @@ function initChatSystem() {
 
         systemDB.friendships.push(newFriendship);
         saveSystemDB();
+
+        if (socketIO) {
+            socketIO.emit('add-friendship', newFriendship);
+        }
+
         renderFriendsList();
 
         resultEl.innerHTML = `<span class="text-success">🎉 Đã kết bạn thành công với ${targetUser.name} (@${targetUser.userId})!</span>`;
@@ -594,6 +634,10 @@ function initChatSystem() {
 
         systemDB.messages.push(newMsg);
         saveSystemDB();
+
+        if (socketIO) {
+            socketIO.emit('send-message', newMsg);
+        }
 
         inputEl.value = '';
         renderChatMessages();
@@ -1822,6 +1866,15 @@ function initCallSystem() {
         onlineUsersList = users || [];
         updateFriendsOnlineStatus();
         updateCallButtonsVisibility();
+    });
+
+    // Lắng nghe đồng bộ DB hệ thống real-time (tin nhắn mới, kết bạn mới)
+    socketIO.on('system-db-updated', (updatedData) => {
+        if (updatedData) {
+            updateLocalSystemDB(updatedData);
+            renderFriendsList();
+            renderChatMessages();
+        }
     });
 
     // Yêu cầu danh sách online hiện tại
