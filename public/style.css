@@ -2321,29 +2321,41 @@ input:checked + .slider:before {
 .call-screen-overlay {
     position: fixed;
     inset: 0;
-    background: #0a0a0a;
+    background: #090d16;
     z-index: 9999;
     display: none;
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    overflow: hidden;
 }
 
 .call-screen-overlay.active {
     display: flex;
 }
 
-/* Remote Video (toàn màn hình) */
+/* Remote Video Container & Styling */
 .remote-video {
     position: absolute;
     inset: 0;
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain; /* Cho phép xem toàn bộ khung hình camera bạn bè không bị zoom quá sát mặt */
+    background: radial-gradient(circle at center, #1e293b 0%, #090d16 100%);
     z-index: 1;
 }
 
-/* Khi remote tắt cam - hiển thị avatar */
+/* Backing ambient blur effect for letterboxed videos */
+.call-screen-overlay::before {
+    content: '';
+    position: absolute;
+    inset: -20px;
+    background: radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.15), rgba(6, 182, 212, 0.05), transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* Khi remote tắt cam - hiển thị avatar nghệ thuật */
 .remote-video-off {
     position: absolute;
     inset: 0;
@@ -2352,7 +2364,7 @@ input:checked + .slider:before {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+    background: linear-gradient(135deg, #0b0f19 0%, #172033 50%, #0b0f19 100%);
 }
 
 .remote-video-off.hidden {
@@ -2360,70 +2372,85 @@ input:checked + .slider:before {
 }
 
 .call-avatar-large {
-    width: 140px;
-    height: 140px;
+    width: 130px;
+    height: 130px;
     border-radius: 50%;
     background: linear-gradient(135deg, var(--primary-color), #8b5cf6, #06b6d4);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 52px;
+    font-size: 48px;
     font-weight: 800;
     color: #fff;
-    margin-bottom: 16px;
-    box-shadow: 0 0 40px rgba(99, 102, 241, 0.3);
+    margin-bottom: 20px;
+    box-shadow: 0 0 50px rgba(99, 102, 241, 0.4), inset 0 0 20px rgba(255, 255, 255, 0.2);
     animation: avatarFloat 3s ease-in-out infinite;
+    border: 3px solid rgba(255, 255, 255, 0.2);
 }
 
 @keyframes avatarFloat {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-8px); }
+    0%, 100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-8px) scale(1.02); }
 }
 
 .remote-video-off p {
-    font-size: 22px;
+    font-size: 20px;
     font-weight: 600;
-    color: #e2e8f0;
+    color: #f1f5f9;
     letter-spacing: 0.5px;
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(10px);
+    padding: 8px 24px;
+    border-radius: var(--radius-full);
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-/* Local Video (PiP - nhỏ ở góc phải dưới) */
+/* Local Video (PiP - Khung nhỏ ở góc dưới) */
 .local-video-pip {
     position: absolute;
-    bottom: 110px;
+    bottom: 100px;
     right: 24px;
-    width: 180px;
-    height: 240px;
-    border-radius: 16px;
+    width: 200px;
+    height: 150px;
+    border-radius: 18px;
     overflow: hidden;
     z-index: 10;
-    border: 3px solid rgba(255, 255, 255, 0.2);
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
-    cursor: grab;
-    transition: box-shadow 0.3s ease;
+    border: 2px solid rgba(255, 255, 255, 0.25);
+    box-shadow: 0 12px 35px rgba(0, 0, 0, 0.6), 0 0 20px rgba(99, 102, 241, 0.2);
+    background: #0f172a;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .local-video-pip:hover {
-    border-color: rgba(99, 102, 241, 0.6);
-    box-shadow: 0 8px 30px rgba(99, 102, 241, 0.3);
+    transform: scale(1.05);
+    border-color: var(--primary-color);
+    box-shadow: 0 16px 40px rgba(99, 102, 241, 0.4);
 }
 
 .local-video {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    transform: scaleX(-1);
+    transform: scaleX(-1); /* Gương soi selfie */
 }
 
 .local-video-off {
     position: absolute;
     inset: 0;
-    background: #1e293b;
+    background: linear-gradient(135deg, #1e293b, #0f172a);
     display: none;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    font-size: 32px;
-    color: #64748b;
+    gap: 8px;
+    color: #94a3b8;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.local-video-off i {
+    font-size: 28px;
+    color: #ef4444;
 }
 
 .local-video-off.visible {
@@ -2440,14 +2467,25 @@ input:checked + .slider:before {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 20px 28px;
-    background: linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%);
+    padding: 24px 32px;
+    background: linear-gradient(to bottom, rgba(9, 13, 22, 0.9) 0%, rgba(9, 13, 22, 0) 100%);
+    pointer-events: none;
+}
+
+.call-top-bar > * {
+    pointer-events: auto;
 }
 
 .call-info {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
+    background: rgba(15, 23, 42, 0.75);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    padding: 8px 18px;
+    border-radius: var(--radius-full);
+    border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .call-status-dot {
@@ -2455,30 +2493,31 @@ input:checked + .slider:before {
     height: 10px;
     border-radius: 50%;
     background: #22c55e;
-    box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+    box-shadow: 0 0 10px rgba(34, 197, 94, 0.8);
     animation: onlinePulse 2s infinite;
 }
 
 .call-partner-name {
-    font-size: 17px;
+    font-size: 15px;
     font-weight: 600;
-    color: #fff;
-    text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+    color: #f8fafc;
 }
 
 .call-timer {
-    font-size: 16px;
-    font-weight: 600;
-    color: #fff;
-    background: rgba(255,255,255,0.15);
-    backdrop-filter: blur(10px);
-    padding: 6px 16px;
+    font-size: 15px;
+    font-weight: 700;
+    color: #f8fafc;
+    background: rgba(15, 23, 42, 0.75);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    padding: 8px 20px;
     border-radius: var(--radius-full);
+    border: 1px solid rgba(255, 255, 255, 0.12);
     font-variant-numeric: tabular-nums;
     letter-spacing: 1px;
 }
 
-/* Connecting State */
+/* Connecting State Overlay */
 .call-connecting-state {
     position: absolute;
     inset: 0;
@@ -2487,8 +2526,8 @@ input:checked + .slider:before {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.95));
-    gap: 20px;
+    background: linear-gradient(135deg, rgba(9, 13, 22, 0.96), rgba(23, 32, 51, 0.96));
+    gap: 24px;
 }
 
 .call-connecting-state.hidden {
@@ -2496,12 +2535,13 @@ input:checked + .slider:before {
 }
 
 .connecting-spinner {
-    width: 48px;
-    height: 48px;
+    width: 54px;
+    height: 54px;
     border: 4px solid rgba(99, 102, 241, 0.2);
     border-top-color: var(--primary-color);
     border-radius: 50%;
     animation: spinConnect 1s linear infinite;
+    box-shadow: 0 0 20px rgba(99, 102, 241, 0.3);
 }
 
 @keyframes spinConnect {
@@ -2509,28 +2549,28 @@ input:checked + .slider:before {
 }
 
 .call-connecting-state p {
-    font-size: 18px;
-    font-weight: 500;
-    color: #94a3b8;
-    animation: typePulse 1.5s ease-in-out infinite;
+    font-size: 19px;
+    font-weight: 600;
+    color: #cbd5e1;
 }
 
 /* Call Controls Bar (bottom floating) */
 .call-controls-bar {
     position: absolute;
-    bottom: 32px;
+    bottom: 28px;
     left: 50%;
     transform: translateX(-50%);
     z-index: 20;
     display: flex;
+    align-items: center;
     gap: 20px;
-    padding: 14px 32px;
+    padding: 12px 28px;
     background: rgba(15, 23, 42, 0.85);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
     border-radius: var(--radius-full);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
 }
 
 .call-ctrl-btn {
@@ -2545,30 +2585,33 @@ input:checked + .slider:before {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.25s ease;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .call-ctrl-btn:hover {
     background: rgba(255, 255, 255, 0.25);
-    transform: scale(1.1);
+    transform: translateY(-3px) scale(1.08);
+    box-shadow: 0 6px 20px rgba(255, 255, 255, 0.15);
 }
 
 .call-ctrl-btn.muted {
-    background: rgba(239, 68, 68, 0.3);
+    background: rgba(239, 68, 68, 0.25);
     color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.4);
 }
 
 .call-ctrl-btn.muted:hover {
-    background: rgba(239, 68, 68, 0.5);
+    background: rgba(239, 68, 68, 0.4);
 }
 
 .call-ctrl-btn.cam-off {
-    background: rgba(239, 68, 68, 0.3);
+    background: rgba(239, 68, 68, 0.25);
     color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.4);
 }
 
 .call-ctrl-btn.cam-off:hover {
-    background: rgba(239, 68, 68, 0.5);
+    background: rgba(239, 68, 68, 0.4);
 }
 
 .call-ctrl-btn.end-call-btn {
@@ -2577,28 +2620,29 @@ input:checked + .slider:before {
     width: 60px;
     height: 60px;
     font-size: 22px;
-    box-shadow: 0 4px 20px rgba(239, 68, 68, 0.4);
+    box-shadow: 0 6px 25px rgba(239, 68, 68, 0.5);
 }
 
 .call-ctrl-btn.end-call-btn:hover {
     background: linear-gradient(135deg, #dc2626, #b91c1c);
-    transform: scale(1.15);
-    box-shadow: 0 6px 30px rgba(239, 68, 68, 0.6);
+    transform: translateY(-3px) scale(1.12);
+    box-shadow: 0 8px 30px rgba(239, 68, 68, 0.7);
 }
 
 /* --- Responsive cho Call --- */
 @media (max-width: 768px) {
     .local-video-pip {
-        width: 120px;
-        height: 160px;
-        bottom: 100px;
-        right: 12px;
+        width: 130px;
+        height: 100px;
+        bottom: 95px;
+        right: 16px;
+        border-radius: 14px;
     }
 
     .call-controls-bar {
         gap: 14px;
-        padding: 10px 24px;
-        bottom: 20px;
+        padding: 10px 20px;
+        bottom: 18px;
     }
 
     .call-ctrl-btn {
