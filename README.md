@@ -126,6 +126,29 @@ volume. Nếu con số này bất ngờ về 0 ngay sau khi bạn vừa deploy c
 đã có user), gần như chắc chắn Volume **không được gắn giữ nguyên** giữa các lần
 deploy — kiểm tra lại **Settings → Volumes → Mount Path = `/date`** của service.
 
+## Bản sửa lỗi: kết bạn phải chờ chấp nhận + đồng bộ liên tục
+
+Trước đây bấm "Tìm & Kết Bạn" là **tự động thành bạn bè ngay lập tức** ở phía người
+gửi, còn phía người nhận không hề được thông báo và cũng không thấy gì cả (giao diện
+"Lời Mời Kết Bạn" trong `index.html` vốn đã có sẵn nhưng chưa từng được nối vào code).
+Đã sửa thành luồng đúng:
+
+1. Bấm "Tìm & Kết Bạn" → gửi **lời mời** (trạng thái `pending`), CHƯA phải bạn bè.
+2. Người nhận thấy lời mời hiện ra trong khung **"Lời Mời Kết Bạn"**, có nút
+   ✅ Chấp nhận / ❌ Từ chối.
+3. Chỉ khi người nhận bấm **Chấp nhận**, cả 2 bên mới chính thức là bạn bè, cùng lúc
+   hiện ra trong danh sách bạn học của cả 2 người và có thể nhắn tin/gọi cho nhau ngay
+   — không cần ai phải "gửi tin nhắn trước mới hiện ra" như trước.
+4. Nếu bị từ chối, người gửi có thể tìm và gửi lại lời mời mới sau đó.
+5. Khi có lời mời mới hoặc lời mời được chấp nhận, hệ thống tự gửi 1 thư vào
+   **Hộp Thư** của người liên quan để không bị bỏ lỡ.
+
+**Đồng bộ liên tục:** ngoài việc đẩy cập nhật tức thời qua Socket.IO khi cả 2 người
+đang online cùng lúc, ứng dụng giờ còn tự động kiểm tra lại dữ liệu từ server mỗi 12
+giây (chạy ngầm, không cần bấm gì) — nên kể cả khi kết nối realtime bị rớt tạm thời,
+lời mời kết bạn / tin nhắn / trạng thái bạn bè vẫn sẽ tự cập nhật đều đặn ở cả hai
+phía trong ít giây.
+
 ## Lưu ý quan trọng
 - Mật khẩu người dùng hiện đang được lưu **dạng thường** (plain text) trong
   `system-db.json`, giống hệt cách app cũ lưu trong `localStorage`. Việc chuyển

@@ -824,6 +824,36 @@ input:checked + .slider:before {
     text-overflow: ellipsis;
 }
 
+.friend-request-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.friend-request-actions {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+}
+
+.friend-request-actions .btn {
+    padding: 4px 10px;
+    font-size: 12px;
+}
+
+.friend-request-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background-color: var(--warning-color, #f59e0b);
+    color: #1a1a1a;
+    margin-left: 6px;
+}
+
 .chat-main-pane {
     display: flex;
     flex-direction: column;

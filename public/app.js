@@ -310,6 +310,8 @@ function loadUserData() {
     renderPomodoroTasksDropdown();
     updateMailboxBadge();
     renderFriendsList();
+    renderIncomingRequests();
+    startContinuousSystemSync();
 
     // Sau khi hiển thị ngay dữ liệu có sẵn trong localStorage (không bị giật/chờ),
     // thử tải bản mới nhất từ server (volume /date) để đồng bộ giữa các thiết bị.
@@ -551,6 +553,11 @@ function initAuthSystem() {
 function performLogout() {
     if (confirm('Bạn có chắc chắn muốn đăng xuất khỏi tài khoản hiện tại?')) {
         saveUserData();
+        stopContinuousSystemSync();
+        if (socketIO) {
+            socketIO.disconnect();
+            socketIO = null;
+        }
         currentUser = null;
         localStorage.removeItem('studyflow_current_user');
         
@@ -612,17 +619,43 @@ function initChatSystem() {
         if (existingRelation) {
             if (existingRelation.status === 'accepted') {
                 resultEl.innerHTML = `<span class="text-success">Bạn và @${targetUser.userId} đã là bạn bè!</span>`;
-            } else {
-                resultEl.innerHTML = `<span class="text-warning">Đã gửi hoặc đang chờ lời mời kết bạn!</span>`;
+                return;
             }
+            if (existingRelation.status === 'pending') {
+                if (existingRelation.user1 === currentUser.userId) {
+                    resultEl.innerHTML = `<span class="text-warning">Đã gửi lời mời tới @${targetUser.userId}, đang chờ chấp nhận!</span>`;
+                } else {
+                    resultEl.innerHTML = `<span class="text-warning">@${targetUser.userId} đã gửi lời mời kết bạn cho bạn — vào mục "Lời Mời Kết Bạn" bên dưới để chấp nhận!</span>`;
+                    renderIncomingRequests();
+                }
+                return;
+            }
+            // Trước đó đã từ chối -> cho phép gửi lại lời mời mới
+            existingRelation.status = 'pending';
+            existingRelation.user1 = currentUser.userId;
+            existingRelation.user2 = targetUser.userId;
+            existingRelation.requestedAt = Date.now();
+            delete existingRelation.respondedAt;
+
+            saveSystemDB();
+            if (socketIO) socketIO.emit('add-friendship', existingRelation);
+
+            resultEl.innerHTML = `<span class="text-success">📨 Đã gửi lời mời kết bạn tới ${targetUser.name} (@${targetUser.userId})! Đang chờ chấp nhận...</span>`;
+            document.getElementById('search-friend-userid').value = '';
             return;
         }
 
+        // Gửi LỜI MỜI kết bạn — CHƯA phải bạn bè ngay. Người nhận (targetUser) phải vào
+        // mục "Lời Mời Kết Bạn" và bấm Chấp Nhận thì cả 2 mới chính thức là bạn bè và
+        // có thể nhắn tin / gọi cho nhau. Trước đây code tự động đặt status = 'accepted'
+        // ngay khi gửi, khiến người gửi coi như đã kết bạn xong còn người nhận không hề
+        // hay biết và không thấy gì cả — đây là lỗi đã được sửa.
         const newFriendship = {
             id: 'friend-' + Date.now(),
-            user1: currentUser.userId,
-            user2: targetUser.userId,
-            status: 'accepted'
+            user1: currentUser.userId,   // người gửi lời mời
+            user2: targetUser.userId,    // người phải chấp nhận
+            status: 'pending',
+            requestedAt: Date.now()
         };
 
         systemDB.friendships.push(newFriendship);
@@ -632,9 +665,7 @@ function initChatSystem() {
             socketIO.emit('add-friendship', newFriendship);
         }
 
-        renderFriendsList();
-
-        resultEl.innerHTML = `<span class="text-success">🎉 Đã kết bạn thành công với ${targetUser.name} (@${targetUser.userId})!</span>`;
+        resultEl.innerHTML = `<span class="text-success">📨 Đã gửi lời mời kết bạn tới ${targetUser.name} (@${targetUser.userId})! Đang chờ chấp nhận...</span>`;
         document.getElementById('search-friend-userid').value = '';
     });
 
@@ -667,6 +698,151 @@ function initChatSystem() {
         inputEl.value = '';
         renderChatMessages();
     });
+}
+
+// --- ĐỒNG BỘ LIÊN TỤC (fallback ngoài Socket.IO) ---
+// Socket.IO cho tốc độ tức thời khi cả 2 người đang online cùng lúc, nhưng nếu kết nối
+// socket bị rớt/không ổn định (mạng yếu, sleep tab...), vẫn cần 1 lớp bảo hiểm để trạng
+// thái kết bạn/tin nhắn luôn được cập nhật đều đặn ở CẢ HAI phía mà không cần bấm gì.
+let systemSyncIntervalId = null;
+const SYSTEM_SYNC_INTERVAL_MS = 12000; // 12 giây/lần
+
+function startContinuousSystemSync() {
+    if (systemSyncIntervalId) return; // đã chạy rồi, tránh tạo trùng interval
+    systemSyncIntervalId = setInterval(async () => {
+        if (!currentUser) return;
+        const previousFriendships = (systemDB.friendships || []).map(f => ({ id: f.id, status: f.status }));
+
+        const latest = await fetchSystemDBFromServer();
+        if (!latest) return; // offline tạm thời -> giữ nguyên bản hiện có, thử lại lần sau
+
+        updateLocalSystemDB(latest);
+        notifyFriendshipChanges(previousFriendships);
+        renderIncomingRequests();
+        renderFriendsList();
+        renderChatMessages();
+    }, SYSTEM_SYNC_INTERVAL_MS);
+}
+
+function stopContinuousSystemSync() {
+    if (systemSyncIntervalId) {
+        clearInterval(systemSyncIntervalId);
+        systemSyncIntervalId = null;
+    }
+}
+
+// --- LỜI MỜI KẾT BẠN: hiển thị, chấp nhận, từ chối ---
+function getIncomingFriendRequests() {
+    if (!currentUser) return [];
+    return systemDB.friendships.filter(f => f && f.status === 'pending' && f.user2 === currentUser.userId);
+}
+
+function renderIncomingRequests() {
+    const card = document.getElementById('friend-requests-card');
+    const listEl = document.getElementById('friend-requests-list');
+    if (!card || !listEl || !currentUser) return;
+
+    const requests = getIncomingFriendRequests();
+
+    if (requests.length === 0) {
+        card.style.display = 'none';
+        listEl.innerHTML = '';
+        return;
+    }
+
+    card.style.display = 'block';
+    listEl.innerHTML = requests.map(f => {
+        const sender = systemDB.users.find(u => u && u.userId === f.user1);
+        const senderName = sender ? sender.name : f.user1;
+        return `
+            <div class="friend-request-item">
+                <div class="user-avatar-circle">${getInitials(senderName)}</div>
+                <div class="friend-item-info">
+                    <div class="friend-item-name">${escapeHTML(senderName)}</div>
+                    <div class="user-id-badge">@${f.user1}</div>
+                </div>
+                <div class="friend-request-actions">
+                    <button type="button" class="btn btn-success btn-sm" onclick="acceptFriendRequest('${f.id}')" title="Chấp nhận"><i class="fa-solid fa-check"></i></button>
+                    <button type="button" class="btn btn-danger btn-sm" onclick="rejectFriendRequest('${f.id}')" title="Từ chối"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+window.acceptFriendRequest = function(friendshipId) {
+    if (!currentUser) return;
+    const f = systemDB.friendships.find(x => x && x.id === friendshipId);
+    // Chỉ người NHẬN lời mời (user2) mới được chấp nhận
+    if (!f || f.user2 !== currentUser.userId || f.status !== 'pending') return;
+
+    f.status = 'accepted';
+    f.respondedAt = Date.now();
+    saveSystemDB();
+
+    if (socketIO) socketIO.emit('add-friendship', f);
+
+    renderIncomingRequests();
+    renderFriendsList();
+};
+
+window.rejectFriendRequest = function(friendshipId) {
+    if (!currentUser) return;
+    const f = systemDB.friendships.find(x => x && x.id === friendshipId);
+    if (!f || f.user2 !== currentUser.userId || f.status !== 'pending') return;
+
+    // Không xóa hẳn record (để tránh việc đồng bộ merge làm nó "sống lại" ở phía
+    // khác), mà chuyển sang trạng thái 'rejected'. Người gửi có thể gửi lại lời mời
+    // mới sau này nếu muốn.
+    f.status = 'rejected';
+    f.respondedAt = Date.now();
+    saveSystemDB();
+
+    if (socketIO) socketIO.emit('add-friendship', f);
+
+    renderIncomingRequests();
+};
+
+// So sánh danh sách kết bạn trước/sau khi đồng bộ để báo cho người dùng biết ngay
+// (qua Hộp Thư) khi có lời mời mới đến, hoặc khi lời mời mình gửi vừa được chấp nhận —
+// giúp cả 2 bên luôn thấy trạng thái mới nhất mà không cần tự tay bấm tìm lại.
+function notifyFriendshipChanges(previousFriendships) {
+    if (!currentUser) return;
+    const beforeMap = new Map((previousFriendships || []).map(f => [f.id, f.status]));
+
+    (systemDB.friendships || []).forEach(f => {
+        if (!f || !f.id) return;
+        const prevStatus = beforeMap.get(f.id);
+        if (prevStatus === f.status) return; // không đổi -> bỏ qua
+
+        if (f.user2 === currentUser.userId && f.status === 'pending') {
+            const sender = systemDB.users.find(u => u && u.userId === f.user1);
+            addSystemMailboxLetter(
+                '🤝 Lời mời kết bạn mới',
+                `${sender ? sender.name : '@' + f.user1} vừa gửi cho bạn một lời mời kết bạn. Vào mục "Bạn Bè" để chấp nhận hoặc từ chối nhé!`
+            );
+        } else if (f.user1 === currentUser.userId && f.status === 'accepted') {
+            const target = systemDB.users.find(u => u && u.userId === f.user2);
+            addSystemMailboxLetter(
+                '🎉 Lời mời kết bạn được chấp nhận!',
+                `${target ? target.name : '@' + f.user2} đã chấp nhận lời mời kết bạn của bạn. Giờ hai bạn có thể nhắn tin cho nhau rồi!`
+            );
+        }
+    });
+}
+
+function addSystemMailboxLetter(title, content) {
+    state.mailbox.unshift({
+        id: 'mail-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+        title: title,
+        badgeIcon: '🤝',
+        sender: 'Ban Quản Trị StudyFlow',
+        date: getFormattedDate(0),
+        read: false,
+        content: content
+    });
+    saveUserData();
+    updateMailboxBadge();
 }
 
 function renderFriendsList() {
@@ -835,7 +1011,7 @@ function initNavigation() {
             else if (targetTab === 'tasks') renderTasksPage();
             else if (targetTab === 'subjects') renderSubjects();
             else if (targetTab === 'pomodoro') renderPomodoroTasksDropdown();
-            else if (targetTab === 'chat') renderFriendsList();
+            else if (targetTab === 'chat') { renderFriendsList(); renderIncomingRequests(); }
         });
     });
 
@@ -1893,10 +2069,16 @@ function initCallSystem() {
         updateCallButtonsVisibility();
     });
 
-    // Lắng nghe đồng bộ DB hệ thống real-time (tin nhắn mới, kết bạn mới)
+    // Lắng nghe đồng bộ DB hệ thống real-time (tin nhắn mới, lời mời kết bạn mới,
+    // lời mời được chấp nhận...). Đây là kênh cập nhật NGAY LẬP TỨC cho cả 2 phía khi
+    // đang online cùng lúc; startContinuousSystemSync() ở trên là lớp dự phòng chạy định
+    // kỳ phòng khi socket bị rớt kết nối.
     socketIO.on('system-db-updated', (updatedData) => {
         if (updatedData) {
+            const previousFriendships = (systemDB.friendships || []).map(f => ({ id: f.id, status: f.status }));
             updateLocalSystemDB(updatedData);
+            notifyFriendshipChanges(previousFriendships);
+            renderIncomingRequests();
             renderFriendsList();
             renderChatMessages();
         }
