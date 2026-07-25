@@ -46,24 +46,24 @@
             </div>
 
             <nav class="nav-menu">
-                <button class="nav-item active" data-tab="dashboard">
+                <button class="nav-item active" data-tab="dashboard" onclick="switchTab('dashboard')">
                     <i class="fa-solid fa-chart-pie"></i>
                     <span>Tổng Quan & Tiến Độ</span>
                 </button>
-                <button class="nav-item" data-tab="tasks">
+                <button class="nav-item" data-tab="tasks" onclick="switchTab('tasks')">
                     <i class="fa-solid fa-list-check"></i>
                     <span>Nhiệm Vụ Hàng Ngày</span>
                     <span class="badge" id="pending-count-badge">0</span>
                 </button>
-                <button class="nav-item" data-tab="pomodoro">
+                <button class="nav-item" data-tab="pomodoro" onclick="switchTab('pomodoro')">
                     <i class="fa-solid fa-clock"></i>
                     <span>Đồng Hồ Pomodoro</span>
                 </button>
-                <button class="nav-item" data-tab="subjects">
+                <button class="nav-item" data-tab="subjects" onclick="switchTab('subjects')">
                     <i class="fa-solid fa-book-bookmark"></i>
                     <span>Môn Học & Mục Tiêu</span>
                 </button>
-                <button class="nav-item" data-tab="chat">
+                <button class="nav-item" data-tab="chat" onclick="switchTab('chat')">
                     <i class="fa-solid fa-comments"></i>
                     <span>Trò Chuyện & Bạn Học</span>
                     <span class="badge" id="unread-chat-count-badge" style="display:none">0</span>
@@ -99,7 +99,7 @@
             <!-- Header -->
             <header class="top-header">
                 <div class="header-greeting">
-                    <button class="btn-mobile-menu" id="btn-toggle-sidebar" title="Mở Menu">
+                    <button class="btn-mobile-menu" id="btn-toggle-sidebar" title="Mở Menu" onclick="toggleMobileSidebar()">
                         <i class="fa-solid fa-bars"></i>
                     </button>
                     <div>

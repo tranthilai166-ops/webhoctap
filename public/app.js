@@ -2500,7 +2500,7 @@ function updateCallButtonsVisibility() {
 
     if (!audioBtn || !videoBtn) return;
 
-    if (state.activeChatFriendId && onlineUsersList.includes(state.activeChatFriendId)) {
+    if ((state.activeChatFriendId && onlineUsersList.includes(state.activeChatFriendId)) || state.activeGroupId) {
         audioBtn.style.display = 'flex';
         videoBtn.style.display = 'flex';
     } else {
@@ -2516,9 +2516,60 @@ async function initiateCall(callType) {
         return;
     }
 
+    // GỌI NHÓM HỌC TẬP
+    if (state.activeGroupId) {
+        const group = (systemDB.groups || []).find(g => g && g.id === state.activeGroupId);
+        if (!group) return;
+
+        try {
+            const constraints = {
+                audio: true,
+                video: callType === 'video' ? { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } : false
+            };
+            localStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+            callState.inCall = true;
+            callState.callType = callType;
+            callState.partnerId = state.activeGroupId;
+            callState.partnerName = group.name;
+            callState.isMicOn = true;
+            callState.isCamOn = callType === 'video';
+
+            showCallScreen(group.name, callType);
+
+            const localVideoEl = document.getElementById('local-video');
+            if (localVideoEl && localStream) {
+                localVideoEl.srcObject = localStream;
+            }
+
+            // Gửi cuộc gọi đến tất cả thành viên trong nhóm đang online
+            const otherMembers = (group.members || []).filter(m => m !== currentUser.userId);
+            otherMembers.forEach(targetUserId => {
+                if (socketIO && onlineUsersList.includes(targetUserId)) {
+                    socketIO.emit('call-request', {
+                        callerId: currentUser.userId,
+                        callerName: `${currentUser.name} (Nhóm: ${group.name})`,
+                        targetUserId: targetUserId,
+                        callType: callType,
+                        callerPeerId: myPeer?.id || ''
+                    });
+                }
+            });
+
+            const connectText = document.getElementById('call-connecting-text');
+            if (connectText) connectText.textContent = `Đang đổ chuông nhóm ${group.name}...`;
+
+        } catch (err) {
+            console.error('Không thể truy cập camera/mic:', err);
+            alert('Không thể truy cập camera hoặc microphone. Vui lòng kiểm tra quyền thiết bị.');
+            cleanupCall();
+        }
+        return;
+    }
+
     if (!state.activeChatFriendId) return;
 
-    const friend = systemDB.users.find(u => u.userId === state.activeChatFriendId);
+    const friend = systemDB.users.find(u => u && u.userId === state.activeChatFriendId);
     if (!friend) return;
 
     // Kiểm tra online
