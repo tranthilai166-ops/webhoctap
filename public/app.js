@@ -3053,11 +3053,11 @@ window.selectChatFriend = function(friendUserId) {
 renderFriendsList = _patchedRenderFriendsList;
 
 // --- KHỞI TẠO KHI ĐĂNG NHẬP ---
-// Ghi đè loadUserData để thêm bước khởi tạo call system
+// Ghi đè loadUserData để thêm bước khởi tạo call system và tự động đồng bộ DB
 const _originalLoadUserData = loadUserData;
 loadUserData = function() {
     _originalLoadUserData();
-    // Khởi tạo call system sau khi đã load user data
+    syncSystemDBToServer();
     setTimeout(() => {
         initCallSystem();
     }, 500);

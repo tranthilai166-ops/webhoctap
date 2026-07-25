@@ -42,9 +42,21 @@ function safeUserId(userId) {
 
 function readJsonFile(filePath, fallback) {
     try {
-        if (!fs.existsSync(filePath)) return fallback;
-        const raw = fs.readFileSync(filePath, 'utf-8');
-        return raw ? JSON.parse(raw) : fallback;
+        if (fs.existsSync(filePath)) {
+            const raw = fs.readFileSync(filePath, 'utf-8');
+            if (raw && raw.trim()) return JSON.parse(raw);
+        }
+        // Tự động khôi phục từ bản sao lưu .bak nếu file chính rỗng hoặc chưa tồn tại
+        const bakPath = filePath + '.bak';
+        if (fs.existsSync(bakPath)) {
+            const bakRaw = fs.readFileSync(bakPath, 'utf-8');
+            if (bakRaw && bakRaw.trim()) {
+                console.log(`[Tự động khôi phục] Đã khôi phục dữ liệu từ bản sao lưu: ${bakPath}`);
+                const parsed = JSON.parse(bakRaw);
+                return parsed;
+            }
+        }
+        return fallback;
     } catch (err) {
         console.error('Lỗi đọc file', filePath, err);
         return fallback;
