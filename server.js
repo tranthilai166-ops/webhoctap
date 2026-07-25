@@ -74,8 +74,8 @@ function writeJsonFile(filePath, data) {
 
 // Hàm hợp nhất (merge) dữ liệu System DB an toàn chống ghi đè/mất mát
 function mergeSystemDB(incomingData) {
-    const currentData = readJsonFile(SYSTEM_DB_PATH, { users: [], friendships: [], messages: [] });
-    const { users = [], friendships = [], messages = [] } = incomingData || {};
+    const currentData = readJsonFile(SYSTEM_DB_PATH, { users: [], friendships: [], messages: [], groups: [] });
+    const { users = [], friendships = [], messages = [], groups = [] } = incomingData || {};
 
     // 1. Merge users (theo userId)
     const usersMap = new Map();
@@ -97,7 +97,12 @@ function mergeSystemDB(incomingData) {
         }
     });
 
-    // 3. Merge messages (theo id) - Lọc bỏ tin nhắn hết hạn 7 ngày
+    // 3. Merge groups (theo id)
+    const groupsMap = new Map();
+    (currentData.groups || []).forEach(g => { if (g && g.id) groupsMap.set(g.id, g); });
+    groups.forEach(g => { if (g && g.id) groupsMap.set(g.id, g); });
+
+    // 4. Merge messages (theo id) - Lọc bỏ tin nhắn hết hạn 7 ngày
     const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
     const now = Date.now();
     const messagesMap = new Map();
@@ -116,6 +121,7 @@ function mergeSystemDB(incomingData) {
     const merged = {
         users: Array.from(usersMap.values()),
         friendships: Array.from(friendshipsMap.values()),
+        groups: Array.from(groupsMap.values()),
         messages: Array.from(messagesMap.values()).sort((a, b) => a.timestamp - b.timestamp)
     };
 
@@ -123,11 +129,11 @@ function mergeSystemDB(incomingData) {
     return merged;
 }
 
-/* ---------------- SYSTEM DB (users / friendships / messages) ---------------- */
+/* ---------------- SYSTEM DB (users / friendships / messages / groups) ---------------- */
 
 // Lấy toàn bộ system DB
 app.get('/api/system-db', (req, res) => {
-    const data = readJsonFile(SYSTEM_DB_PATH, { users: [], friendships: [], messages: [] });
+    const data = readJsonFile(SYSTEM_DB_PATH, { users: [], friendships: [], messages: [], groups: [] });
     res.json(data);
 });
 
@@ -236,6 +242,13 @@ io.on('connection', (socket) => {
     socket.on('add-friendship', (friendshipData) => {
         if (!friendshipData || !friendshipData.id) return;
         const updated = mergeSystemDB({ friendships: [friendshipData] });
+        io.emit('system-db-updated', updated);
+    });
+
+    // Tạo nhóm mới real-time
+    socket.on('create-group', (groupData) => {
+        if (!groupData || !groupData.id) return;
+        const updated = mergeSystemDB({ groups: [groupData] });
         io.emit('system-db-updated', updated);
     });
 

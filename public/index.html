@@ -404,6 +404,21 @@
                             </div>
                         </div>
 
+                        <!-- Groups List for Chat -->
+                        <div class="card mb-3">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h3><i class="fa-solid fa-people-group"></i> Nhóm Học Tập</h3>
+                                <button type="button" class="btn btn-primary btn-xs" id="btn-open-create-group-modal">
+                                    <i class="fa-solid fa-plus"></i> Tạo Nhóm
+                                </button>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="friends-list" id="chat-groups-list">
+                                    <!-- Groups -->
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Friends List for Chat -->
                         <div class="card flex-grow-1">
                             <div class="card-header">
@@ -806,6 +821,34 @@
             <button class="call-ctrl-btn end-call-btn" id="btn-end-call" title="Kết thúc cuộc gọi">
                 <i class="fa-solid fa-phone-slash"></i>
             </button>
+        </div>
+    </div>
+
+    <!-- MODAL: TẠO NHÓM HỌC TẬP -->
+    <div class="modal-overlay" id="create-group-modal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-users-rectangle"></i> Tạo Nhóm Học Tập Mới</h2>
+                <button class="modal-close-btn" id="btn-close-create-group-modal">&times;</button>
+            </div>
+            <form id="create-group-form">
+                <div class="form-group">
+                    <label for="group-name-input">Tên Nhóm Học Tập</label>
+                    <input type="text" id="group-name-input" required placeholder="Ví dụ: Nhóm Ôn Thi Toán 12, Team Cùng Học...">
+                </div>
+
+                <div class="form-group">
+                    <label>Chọn Thành Viên (Từ danh sách bạn học)</label>
+                    <div class="group-members-select-list" id="group-members-select-list">
+                        <!-- Members Checklist -->
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" id="btn-cancel-create-group">Hủy</button>
+                    <button type="submit" class="btn btn-primary"><i class="fa-solid fa-plus"></i> Tạo Nhóm Ngay</button>
+                </div>
+            </form>
         </div>
     </div>
 

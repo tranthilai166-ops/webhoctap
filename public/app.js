@@ -29,16 +29,22 @@ function updateLocalSystemDB(serverData) {
     (systemDB.friendships || []).forEach(f => f && f.id && friendshipsMap.set(f.id, f));
     (serverData.friendships || []).forEach(f => f && f.id && friendshipsMap.set(f.id, f));
 
+    const groupsMap = new Map();
+    (systemDB.groups || []).forEach(g => g && g.id && groupsMap.set(g.id, g));
+    (serverData.groups || []).forEach(g => g && g.id && groupsMap.set(g.id, g));
+
     const messagesMap = new Map();
     (systemDB.messages || []).forEach(m => m && m.id && messagesMap.set(m.id, m));
     (serverData.messages || []).forEach(m => m && m.id && messagesMap.set(m.id, m));
 
     systemDB.users = Array.from(usersMap.values());
     systemDB.friendships = Array.from(friendshipsMap.values());
+    systemDB.groups = Array.from(groupsMap.values());
     systemDB.messages = Array.from(messagesMap.values()).sort((a, b) => a.timestamp - b.timestamp);
 
     localStorage.setItem('studyflow_users_db', JSON.stringify(systemDB.users));
     localStorage.setItem('studyflow_friendships', JSON.stringify(systemDB.friendships));
+    localStorage.setItem('studyflow_groups', JSON.stringify(systemDB.groups));
     localStorage.setItem('studyflow_messages', JSON.stringify(systemDB.messages));
 }
 
@@ -137,6 +143,7 @@ const DEFAULT_MAILBOX = [
 let systemDB = {
     users: JSON.parse(localStorage.getItem('studyflow_users_db')) || [],
     friendships: JSON.parse(localStorage.getItem('studyflow_friendships')) || [],
+    groups: JSON.parse(localStorage.getItem('studyflow_groups')) || [],
     messages: JSON.parse(localStorage.getItem('studyflow_messages')) || []
 };
 
@@ -151,7 +158,8 @@ let state = {
     lastCheckinDate: '',
     theme: localStorage.getItem('studyflow_theme') || 'dark',
     currentPeriod: 'week',
-    activeChatFriendId: null
+    activeChatFriendId: null,
+    activeGroupId: null
 };
 
 // Live Study Session Overlay State
@@ -247,10 +255,8 @@ function purgeExpiredMessages() {
 function saveSystemDB() {
     localStorage.setItem('studyflow_users_db', JSON.stringify(systemDB.users));
     localStorage.setItem('studyflow_friendships', JSON.stringify(systemDB.friendships));
+    localStorage.setItem('studyflow_groups', JSON.stringify(systemDB.groups));
     localStorage.setItem('studyflow_messages', JSON.stringify(systemDB.messages));
-    // Đồng bộ lên server -> lưu vào volume /date. Vì hàm này luôn được gọi lại
-    // SAU KHI systemDB.xxx đã bị filter/splice (xóa), nội dung gửi lên luôn phản ánh
-    // đúng trạng thái đã xóa.
     syncSystemDBToServer();
 }
 
@@ -845,16 +851,95 @@ function addSystemMailboxLetter(title, content) {
     updateMailboxBadge();
 }
 
+function openCreateGroupModal() {
+    if (!currentUser) return;
+    const modal = document.getElementById('create-group-modal');
+    const listEl = document.getElementById('group-members-select-list');
+    if (!modal || !listEl) return;
+
+    const myFriendships = (systemDB.friendships || []).filter(f => f && 
+        ((f.user1 === currentUser.userId || f.user2 === currentUser.userId) && f.status === 'accepted')
+    );
+
+    const friendUserIds = myFriendships.map(f => f.user1 === currentUser.userId ? f.user2 : f.user1);
+    const friends = (systemDB.users || []).filter(u => u && friendUserIds.includes(u.userId));
+
+    if (friends.length === 0) {
+        listEl.innerHTML = `<p class="text-muted text-sm">Chưa có bạn học nào trong danh sách. Hãy kết bạn trước khi tạo nhóm!</p>`;
+    } else {
+        listEl.innerHTML = friends.map(f => `
+            <label class="group-member-checkbox-item">
+                <input type="checkbox" class="group-member-checkbox" value="${f.userId}">
+                <div class="user-avatar-circle" style="width:28px;height:28px;font-size:12px">${getInitials(f.name)}</div>
+                <span>${escapeHTML(f.name)} (@${f.userId})</span>
+            </label>
+        `).join('');
+    }
+
+    modal.classList.add('active');
+}
+
+function renderGroupsList() {
+    const listContainer = document.getElementById('chat-groups-list');
+    if (!listContainer || !currentUser) return;
+
+    const myGroups = (systemDB.groups || []).filter(g => 
+        g && g.members && g.members.includes(currentUser.userId)
+    );
+
+    if (myGroups.length === 0) {
+        listContainer.innerHTML = `
+            <div class="p-3 text-center text-muted text-sm">
+                Chưa tham gia nhóm nào. Bấm "+ Tạo Nhóm" để tạo nhóm học tập mới!
+            </div>
+        `;
+        return;
+    }
+
+    listContainer.innerHTML = myGroups.map(g => `
+        <div class="group-item-card ${state.activeGroupId === g.id ? 'active' : ''}" onclick="selectChatGroup('${g.id}')">
+            <div class="group-avatar-circle">📚</div>
+            <div class="group-item-info">
+                <div class="group-item-name">${escapeHTML(g.name)}</div>
+                <div class="group-member-count">${g.members.length} thành viên</div>
+            </div>
+        </div>
+    `).join('');
+}
+
+window.selectChatGroup = function(groupId) {
+    const group = (systemDB.groups || []).find(g => g && g.id === groupId);
+    if (!group) return;
+
+    state.activeGroupId = groupId;
+    state.activeChatFriendId = null;
+
+    document.getElementById('chat-active-name').textContent = group.name;
+    document.getElementById('chat-active-id').textContent = `${group.members.length} thành viên`;
+    document.getElementById('chat-active-avatar').textContent = '📚';
+
+    document.getElementById('chat-empty-state').style.display = 'none';
+    document.getElementById('chat-input-area').style.display = 'block';
+
+    updateCallButtonsVisibility();
+    renderGroupsList();
+    renderFriendsList();
+    renderChatMessages();
+};
+
 function renderFriendsList() {
     const listContainer = document.getElementById('chat-friends-list');
     if (!listContainer || !currentUser) return;
 
-    const myFriendships = systemDB.friendships.filter(f => 
-        (f.user1 === currentUser.userId || f.user2 === currentUser.userId) && f.status === 'accepted'
+    renderGroupsList();
+    renderIncomingRequests();
+
+    const myFriendships = (systemDB.friendships || []).filter(f => f && 
+        ((f.user1 === currentUser.userId || f.user2 === currentUser.userId) && f.status === 'accepted')
     );
 
     const friendUserIds = myFriendships.map(f => f.user1 === currentUser.userId ? f.user2 : f.user1);
-    const friends = systemDB.users.filter(u => friendUserIds.includes(u.userId));
+    const friends = (systemDB.users || []).filter(u => u && friendUserIds.includes(u.userId));
 
     if (friends.length === 0) {
         listContainer.innerHTML = `
@@ -878,10 +963,11 @@ function renderFriendsList() {
 }
 
 window.selectChatFriend = function(friendUserId) {
-    const friend = systemDB.users.find(u => u.userId === friendUserId);
+    const friend = systemDB.users.find(u => u && u.userId === friendUserId);
     if (!friend) return;
 
     state.activeChatFriendId = friendUserId;
+    state.activeGroupId = null;
 
     document.getElementById('chat-active-name').textContent = friend.name;
     document.getElementById('chat-active-id').textContent = `@${friend.userId}`;
@@ -890,6 +976,8 @@ window.selectChatFriend = function(friendUserId) {
     document.getElementById('chat-empty-state').style.display = 'none';
     document.getElementById('chat-input-area').style.display = 'block';
 
+    updateCallButtonsVisibility();
+    renderGroupsList();
     renderFriendsList();
     renderChatMessages();
 };
