@@ -675,10 +675,60 @@ function initChatSystem() {
         document.getElementById('search-friend-userid').value = '';
     });
 
-    // Send Direct Message Submit
+    // Open & Close Create Group Modal
+    addTouchClick(document.getElementById('btn-open-create-group-modal'), () => {
+        openCreateGroupModal();
+    });
+
+    document.getElementById('btn-close-create-group-modal')?.addEventListener('click', () => {
+        document.getElementById('create-group-modal')?.classList.remove('active');
+    });
+
+    document.getElementById('btn-cancel-create-group')?.addEventListener('click', () => {
+        document.getElementById('create-group-modal')?.classList.remove('active');
+    });
+
+    // Create Group Form Submit
+    document.getElementById('create-group-form')?.addEventListener('submit', (e) => {
+        e.preventDefault();
+        if (!currentUser) return;
+
+        const nameInput = document.getElementById('group-name-input');
+        const name = nameInput ? nameInput.value.trim() : '';
+        if (!name) return;
+
+        const selectedCheckboxes = document.querySelectorAll('.group-member-checkbox:checked');
+        const selectedMemberIds = Array.from(selectedCheckboxes).map(cb => cb.value);
+
+        const newGroup = {
+            id: 'group-' + Date.now(),
+            name: name,
+            avatar: '📚',
+            ownerId: currentUser.userId,
+            members: [currentUser.userId, ...selectedMemberIds],
+            createdAt: Date.now()
+        };
+
+        systemDB.groups.push(newGroup);
+        saveSystemDB();
+
+        if (socketIO) {
+            socketIO.emit('create-group', newGroup);
+        }
+
+        document.getElementById('create-group-modal')?.classList.remove('active');
+        nameInput.value = '';
+
+        renderGroupsList();
+        selectChatGroup(newGroup.id);
+        showToastNotification(`🎉 Đã tạo nhóm "${name}" thành công!`, 'success', 'fa-users');
+    });
+
+    // Send Direct or Group Message Submit
     sendChatForm?.addEventListener('submit', (e) => {
         e.preventDefault();
-        if (!currentUser || !state.activeChatFriendId) return;
+        if (!currentUser) return;
+        if (!state.activeChatFriendId && !state.activeGroupId) return;
 
         const inputEl = document.getElementById('chat-message-input');
         const text = inputEl.value.trim();
@@ -689,7 +739,9 @@ function initChatSystem() {
         const newMsg = {
             id: 'msg-' + Date.now(),
             senderId: currentUser.userId,
-            receiverId: state.activeChatFriendId,
+            senderName: currentUser.name,
+            receiverId: state.activeChatFriendId || null,
+            groupId: state.activeGroupId || null,
             text: text,
             timestamp: Date.now()
         };
@@ -878,6 +930,8 @@ function openCreateGroupModal() {
 
     modal.classList.add('active');
 }
+
+window.openCreateGroupModal = openCreateGroupModal;
 
 function renderGroupsList() {
     const listContainer = document.getElementById('chat-groups-list');
