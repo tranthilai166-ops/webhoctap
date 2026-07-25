@@ -1959,43 +1959,102 @@ function initPeerJS() {
     });
 }
 
+function addTouchClick(el, callback) {
+    if (!el) return;
+    let handled = false;
+    el.addEventListener('pointerdown', (e) => {
+        handled = true;
+        callback(e);
+    });
+    el.addEventListener('click', (e) => {
+        if (!handled) {
+            callback(e);
+        }
+        handled = false;
+    });
+}
+
 function bindCallButtons() {
     // Nút gọi thoại
-    document.getElementById('btn-audio-call')?.addEventListener('click', () => {
+    addTouchClick(document.getElementById('btn-audio-call'), () => {
         if (!state.activeChatFriendId) return;
         initiateCall('audio');
     });
 
     // Nút gọi video
-    document.getElementById('btn-video-call')?.addEventListener('click', () => {
+    addTouchClick(document.getElementById('btn-video-call'), () => {
         if (!state.activeChatFriendId) return;
         initiateCall('video');
     });
 
     // Nút tắt mic
-    document.getElementById('btn-toggle-mic')?.addEventListener('click', () => {
+    addTouchClick(document.getElementById('btn-toggle-mic'), (e) => {
+        if (e) e.stopPropagation();
         toggleMicrophone();
     });
 
     // Nút tắt cam
-    document.getElementById('btn-toggle-camera')?.addEventListener('click', () => {
+    addTouchClick(document.getElementById('btn-toggle-camera'), (e) => {
+        if (e) e.stopPropagation();
         toggleCamera();
     });
 
+    // Nút đổi màn hình lớn/nhỏ (Swap View)
+    addTouchClick(document.getElementById('btn-swap-view'), (e) => {
+        if (e) e.stopPropagation();
+        toggleSwapView();
+    });
+
+    // Nút chia đôi màn hình 50/50 (Messenger Style)
+    addTouchClick(document.getElementById('btn-toggle-layout'), (e) => {
+        if (e) e.stopPropagation();
+        toggleSplitLayout();
+    });
+
+    // Bấm vào khung nhỏ (PiP) để đổi vị trí màn hình bản thân <-> người kia
+    addTouchClick(document.getElementById('local-video-pip'), (e) => {
+        if (e) e.stopPropagation();
+        toggleSwapView();
+    });
+
     // Nút kết thúc cuộc gọi
-    document.getElementById('btn-end-call')?.addEventListener('click', () => {
+    addTouchClick(document.getElementById('btn-end-call'), (e) => {
+        if (e) e.stopPropagation();
         endCall(true);
     });
 
     // Nút chấp nhận cuộc gọi đến
-    document.getElementById('btn-accept-call')?.addEventListener('click', () => {
+    addTouchClick(document.getElementById('btn-accept-call'), () => {
         acceptIncomingCall();
     });
 
     // Nút từ chối cuộc gọi đến
-    document.getElementById('btn-reject-call')?.addEventListener('click', () => {
+    addTouchClick(document.getElementById('btn-reject-call'), () => {
         rejectIncomingCall();
     });
+}
+
+// Chuyển đổi màn hình lớn / nhỏ giữa bản thân & đối phương
+function toggleSwapView() {
+    const overlay = document.getElementById('call-screen-overlay');
+    if (!overlay) return;
+    overlay.classList.toggle('swapped-view');
+}
+
+// Chuyển đổi chế độ chia đôi 50/50 (Messenger Call Style)
+function toggleSplitLayout() {
+    const overlay = document.getElementById('call-screen-overlay');
+    const btn = document.getElementById('btn-toggle-layout');
+    if (!overlay) return;
+    
+    overlay.classList.toggle('split-view-mode');
+    if (btn) {
+        if (overlay.classList.contains('split-view-mode')) {
+            btn.classList.add('active-btn');
+        } else {
+            btn.classList.remove('active-btn');
+        }
+    }
 }
 
 // --- CẬP NHẬT TRẠNG THÁI ONLINE TRÊN DANH SÁCH BẠN BÈ ---

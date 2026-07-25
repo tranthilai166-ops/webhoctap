@@ -764,12 +764,14 @@
             <p id="call-remote-name-display">Bạn Học</p>
         </div>
 
-        <!-- Video bản thân (picture-in-picture nhỏ ở góc) -->
-        <div class="local-video-pip" id="local-video-pip">
+        <!-- Video bản thân (picture-in-picture nhỏ ở góc) - Bấm vào để đổi góc nhìn -->
+        <div class="local-video-pip" id="local-video-pip" title="Bấm để đổi góc nhìn lớn/nhỏ">
             <video class="local-video" id="local-video" autoplay playsinline muted></video>
             <div class="local-video-off" id="local-video-off">
                 <i class="fa-solid fa-video-slash"></i>
+                <span>Cam tắt</span>
             </div>
+            <div class="pip-swap-hint"><i class="fa-solid fa-arrows-rotate"></i> Chuyển góc</div>
         </div>
 
         <!-- Header cuộc gọi -->
@@ -794,6 +796,12 @@
             </button>
             <button class="call-ctrl-btn" id="btn-toggle-camera" title="Bật/Tắt Camera">
                 <i class="fa-solid fa-video"></i>
+            </button>
+            <button class="call-ctrl-btn" id="btn-swap-view" title="Đổi màn hình lớn / nhỏ">
+                <i class="fa-solid fa-arrows-rotate"></i>
+            </button>
+            <button class="call-ctrl-btn" id="btn-toggle-layout" title="Chia đôi màn hình 50/50 (Messenger style)">
+                <i class="fa-solid fa-grip-vertical"></i>
             </button>
             <button class="call-ctrl-btn end-call-btn" id="btn-end-call" title="Kết thúc cuộc gọi">
                 <i class="fa-solid fa-phone-slash"></i>
