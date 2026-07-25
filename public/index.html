@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StudyFlow - Theo Dõi Tiến Độ Học Tập & Nhiệm Vụ Hàng Ngày</title>
+    <meta name="description" content="Ứng dụng quản lý thời gian, nhiệm vụ học tập hàng ngày và kết bạn nhắn tin học tập trực tuyến.">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Canvas Confetti CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <!-- Socket.IO Client CDN -->
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <!-- PeerJS CDN for WebRTC -->
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar" id="sidebar">
+            <div class="brand">
+                <div class="brand-logo">
+                    <i class="fa-solid fa-graduation-cap"></i>
+                </div>
+                <div class="brand-text">
+                    <h2>StudyFlow</h2>
+                    <span>Tiến độ học tập</span>
+                </div>
+            </div>
+
+            <!-- Active User Info Profile Card -->
+            <div class="user-profile-card" id="sidebar-user-card">
+                <div class="user-avatar-circle" id="sidebar-user-avatar">US</div>
+                <div class="user-profile-info">
+                    <h4 id="sidebar-user-name">Chưa Đăng Nhập</h4>
+                    <span class="user-id-badge" id="sidebar-user-id">@guest</span>
+                </div>
+                <button class="icon-btn danger" id="btn-logout" title="Đăng Xuất"><i class="fa-solid fa-right-from-bracket"></i></button>
+            </div>
+
+            <nav class="nav-menu">
+                <button class="nav-item active" data-tab="dashboard">
+                    <i class="fa-solid fa-chart-pie"></i>
+                    <span>Tổng Quan & Tiến Độ</span>
+                </button>
+                <button class="nav-item" data-tab="tasks">
+                    <i class="fa-solid fa-list-check"></i>
+                    <span>Nhiệm Vụ Hàng Ngày</span>
+                    <span class="badge" id="pending-count-badge">0</span>
+                </button>
+                <button class="nav-item" data-tab="pomodoro">
+                    <i class="fa-solid fa-clock"></i>
+                    <span>Đồng Hồ Pomodoro</span>
+                </button>
+                <button class="nav-item" data-tab="subjects">
+                    <i class="fa-solid fa-book-bookmark"></i>
+                    <span>Môn Học & Mục Tiêu</span>
+                </button>
+                <button class="nav-item" data-tab="chat">
+                    <i class="fa-solid fa-comments"></i>
+                    <span>Trò Chuyện & Bạn Học</span>
+                    <span class="badge" id="unread-chat-count-badge" style="display:none">0</span>
+                </button>
+            </nav>
+
+            <!-- Streak Card Widget & Check-in Button -->
+            <div class="streak-widget">
+                <div class="streak-icon">
+                    <i class="fa-solid fa-fire"></i>
+                </div>
+                <div class="streak-info">
+                    <h4 id="streak-days-count">1 Ngày</h4>
+                    <p>Chuỗi học tập liên tục!</p>
+                </div>
+            </div>
+            <button class="btn btn-sm btn-primary w-100 mb-3" id="btn-daily-checkin">
+                <i class="fa-solid fa-calendar-check"></i> Điểm Danh Hôm Nay
+            </button>
+
+            <!-- Dark / Light Theme Toggle -->
+            <div class="theme-toggle-wrapper">
+                <span class="theme-label"><i class="fa-solid fa-moon"></i> Chế độ tối</span>
+                <label class="switch">
+                    <input type="checkbox" id="theme-checkbox" checked>
+                    <span class="slider round"></span>
+                </label>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="top-header">
+                <div class="header-greeting">
+                    <button class="btn-mobile-menu" id="btn-toggle-sidebar" title="Mở Menu">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                    <div>
+                        <h1 id="greeting-title">Xin chào, Bạn học! 👋</h1>
+                        <div class="header-datetime">
+                            <span id="current-date-text">Thứ Bảy, 25/07/2026</span>
+                            <span class="clock-badge" id="live-clock-text"><i class="fa-regular fa-clock"></i> 17:04:33</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="header-actions">
+                    <!-- Mailbox Button -->
+                    <button class="btn btn-outline btn-mailbox-header" id="btn-open-mailbox" title="Hộp thư chúc mừng">
+                        <i class="fa-solid fa-envelope"></i>
+                        <span>Hộp Thư</span>
+                        <span class="mailbox-unread-badge" id="mailbox-unread-count">0</span>
+                    </button>
+
+                    <button class="btn btn-primary" id="btn-quick-add-task">
+                        <i class="fa-solid fa-plus"></i> Thêm Nhiệm Vụ
+                    </button>
+                </div>
+            </header>
+
+            <!-- TAB 1: DASHBOARD -->
+            <section class="tab-content active" id="tab-dashboard">
+                <div class="period-selector-bar">
+                    <div class="period-tabs">
+                        <button class="period-btn active" data-period="week">
+                            <i class="fa-solid fa-calendar-week"></i> Tiến Độ Tuần
+                        </button>
+                        <button class="period-btn" data-period="month">
+                            <i class="fa-solid fa-calendar-days"></i> Tiến Độ Tháng
+                        </button>
+                        <button class="period-btn" data-period="year">
+                            <i class="fa-solid fa-calendar"></i> Tiến Độ Năm
+                        </button>
+                    </div>
+
+                    <div class="period-dates" id="period-range-display">
+                        Tuần này (7 ngày gần nhất)
+                    </div>
+                </div>
+
+                <!-- Stats Overview Cards Grid -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <span class="stat-title">Tỷ Lệ Hoàn Thành</span>
+                            <div class="stat-icon icon-purple"><i class="fa-solid fa-percent"></i></div>
+                        </div>
+                        <div class="stat-body">
+                            <h2 id="stat-completion-rate">0%</h2>
+                            <div class="progress-bar-bg">
+                                <div class="progress-bar-fill" id="progress-completion-fill" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div class="stat-footer">
+                            <span class="trend-up" id="stat-completion-sub"><i class="fa-solid fa-chart-line"></i> Tiến độ thực tế</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <span class="stat-title">Nhiệm Vụ Đã Xong</span>
+                            <div class="stat-icon icon-green"><i class="fa-solid fa-circle-check"></i></div>
+                        </div>
+                        <div class="stat-body">
+                            <h2 id="stat-tasks-done">0 / 0</h2>
+                            <p class="stat-desc">Đã đánh dấu hoàn thành</p>
+                        </div>
+                        <div class="stat-footer">
+                            <span id="stat-tasks-sub">Chưa có nhiệm vụ nào</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <span class="stat-title">Tổng Giờ Học</span>
+                            <div class="stat-icon icon-orange"><i class="fa-solid fa-hourglass-half"></i></div>
+                        </div>
+                        <div class="stat-body">
+                            <h2 id="stat-study-hours">0.0 Giờ</h2>
+                            <p class="stat-desc">Thời gian tập trung ghi nhận</p>
+                        </div>
+                        <div class="stat-footer">
+                            <span class="trend-up"><i class="fa-solid fa-fire"></i> Tích lũy thời gian</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <span class="stat-title">Chuỗi Học Liên Tục</span>
+                            <div class="stat-icon icon-red"><i class="fa-solid fa-bolt"></i></div>
+                        </div>
+                        <div class="stat-body">
+                            <h2 id="stat-streak">1 Ngày</h2>
+                            <p class="stat-desc">Điểm danh hàng ngày</p>
+                        </div>
+                        <div class="stat-footer">
+                            <span>Giữ vững phong độ! 🔥</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Daily Hours Map Chart -->
+                <div class="card mb-4">
+                    <div class="card-header flex-between">
+                        <h3><i class="fa-solid fa-map"></i> Bản Đồ Phân Bố Số Tiếng Học Trong Ngày</h3>
+                        <span class="badge-tag">Hôm Nay</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container" style="height: 220px;">
+                            <canvas id="dailyHoursMapChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Section -->
+                <div class="dashboard-grid">
+                    <div class="card chart-card">
+                        <div class="card-header">
+                            <h3 id="chart-main-title"><i class="fa-solid fa-chart-column"></i> Biểu Đồ Hoàn Thành Nhiệm Vụ</h3>
+                            <span class="badge-tag" id="chart-tag-period">Theo Tuần</span>
+                        </div>
+                        <div class="card-body chart-container">
+                            <canvas id="mainProgressChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="card subject-breakdown-card">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-pie-chart"></i> Phân Bố Theo Môn Học</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container-donut">
+                                <canvas id="subjectPieChart"></canvas>
+                            </div>
+                            <div class="subject-legend-list" id="subject-legend-container">
+                                <!-- Legend -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Daily Snapshot Tasks -->
+                <div class="card daily-quick-card">
+                    <div class="card-header flex-between">
+                        <h3><i class="fa-solid fa-calendar-day"></i> Nhiệm Vụ Cần Làm Hôm Nay</h3>
+                        <button class="btn btn-sm btn-outline" id="btn-view-all-tasks">Xem tất cả <i class="fa-solid fa-arrow-right"></i></button>
+                    </div>
+                    <div class="card-body">
+                        <div class="task-list-container" id="dashboard-tasks-list">
+                            <!-- Tasks -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 2: TASKS MANAGEMENT -->
+            <section class="tab-content" id="tab-tasks">
+                <div class="task-page-header">
+                    <div class="task-filters-bar">
+                        <div class="search-box">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                            <input type="text" id="task-search-input" placeholder="Tìm kiếm nhiệm vụ học tập...">
+                        </div>
+                        <div class="filter-group">
+                            <select id="filter-status">
+                                <option value="all">Tất cả trạng thái</option>
+                                <option value="pending">Chưa hoàn thành</option>
+                                <option value="completed">Đã tích chọn ✓</option>
+                            </select>
+                            <select id="filter-subject">
+                                <option value="all">Tất cả môn học</option>
+                            </select>
+                            <select id="filter-priority">
+                                <option value="all">Mức độ ưu tiên</option>
+                                <option value="high">Độ ưu tiên: Cao 🔥</option>
+                                <option value="medium">Độ ưu tiên: Vừa ⚡</option>
+                                <option value="low">Độ ưu tiên: Thấp 🌱</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tasks-main-wrapper">
+                    <div class="card full-task-card">
+                        <div class="card-header flex-between">
+                            <div class="header-left-info">
+                                <h3><i class="fa-solid fa-list-check"></i> Danh Sách Nhiệm Vụ Chi Tiết</h3>
+                                <span class="task-counter" id="task-summary-counter">Hiển thị 0 nhiệm vụ</span>
+                            </div>
+                            <button class="btn btn-primary btn-sm" id="btn-add-task-modal">
+                                <i class="fa-solid fa-plus"></i> Tạo Nhiệm Vụ Mới
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div class="task-list-container" id="full-tasks-list">
+                                <!-- Tasks -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 3: POMODORO TIMER -->
+            <section class="tab-content" id="tab-pomodoro">
+                <div class="pomodoro-layout">
+                    <div class="card pomodoro-card">
+                        <div class="pomodoro-header">
+                            <div class="pomo-mode-selector">
+                                <button class="pomo-mode-btn active" data-mode="work">Tập Trung (25p)</button>
+                                <button class="pomo-mode-btn" data-mode="shortBreak">Nghỉ Ngơi (5p)</button>
+                                <button class="pomo-mode-btn" data-mode="longBreak">Nghỉ Dài (15p)</button>
+                            </div>
+                        </div>
+                        <div class="pomo-timer-display">
+                            <div class="timer-circle">
+                                <svg class="progress-ring" width="280" height="280">
+                                    <circle class="progress-ring__circle-bg" stroke="rgba(255,255,255,0.1)" stroke-width="12" fill="transparent" r="125" cx="140" cy="140"/>
+                                    <circle class="progress-ring__circle" id="pomo-progress-ring" stroke="var(--primary-color)" stroke-width="12" stroke-linecap="round" fill="transparent" r="125" cx="140" cy="140"/>
+                                </svg>
+                                <div class="timer-time-text">
+                                    <span id="pomo-minutes">25</span>:<span id="pomo-seconds">00</span>
+                                    <p class="timer-status-label" id="pomo-status-label">Hãy sẵn sàng học tập!</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="pomo-controls">
+                            <button class="btn btn-lg btn-primary" id="pomo-start-btn">
+                                <i class="fa-solid fa-play"></i> Bắt Đầu
+                            </button>
+                            <button class="btn btn-lg btn-secondary" id="pomo-pause-btn" style="display: none;">
+                                <i class="fa-solid fa-pause"></i> Tạm Dừng
+                            </button>
+                            <button class="btn btn-lg btn-outline" id="pomo-reset-btn">
+                                <i class="fa-solid fa-rotate-right"></i> Đặt Lại
+                            </button>
+                        </div>
+                        <div class="pomo-attach-task">
+                            <label><i class="fa-solid fa-link"></i> Gắn với nhiệm vụ hiện tại:</label>
+                            <select id="pomo-task-select">
+                                <option value="">-- Chọn nhiệm vụ để tính giờ --</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="card pomo-tips-card">
+                        <h3><i class="fa-solid fa-lightbulb"></i> Mẹo Tập Trung Pomodoro</h3>
+                        <ul class="tips-list">
+                            <li><i class="fa-solid fa-check text-success"></i> Tắt mọi thông báo mạng xã hội trong 25 phút.</li>
+                            <li><i class="fa-solid fa-check text-success"></i> Chọn một nhiệm vụ cụ thể từ danh sách bên trái.</li>
+                            <li><i class="fa-solid fa-check text-success"></i> Nghỉ 5 phút giải lao ngay sau khi chuông báo.</li>
+                            <li><i class="fa-solid fa-check text-success"></i> Hoàn thành 4 chu kỳ Pomodoro để được nghỉ dài 15-30 phút.</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 4: SUBJECTS & GOALS -->
+            <section class="tab-content" id="tab-subjects">
+                <div class="subjects-header-bar flex-between mb-4">
+                    <h3><i class="fa-solid fa-book-bookmark"></i> Danh Sách Môn Học & Chỉ Tiêu Tiến Độ</h3>
+                    <button class="btn btn-primary" id="btn-add-subject-modal">
+                        <i class="fa-solid fa-plus"></i> Thêm Môn Học Mới
+                    </button>
+                </div>
+                <div class="subjects-grid" id="subjects-cards-container">
+                    <!-- Dynamic subjects -->
+                </div>
+            </section>
+
+            <!-- TAB 5: FRIENDS & DIRECT MESSAGING (CHAT) -->
+            <section class="tab-content" id="tab-chat">
+                <div class="chat-tab-container">
+                    <!-- Left Column: Add Friend by User ID & Friend Requests -->
+                    <div class="chat-sidebar-pane">
+                        <div class="card mb-3">
+                            <div class="card-header">
+                                <h3><i class="fa-solid fa-user-plus"></i> Kết Bạn Qua User ID</h3>
+                            </div>
+                            <div class="card-body">
+                                <form id="add-friend-form" class="add-friend-input-group">
+                                    <input type="text" id="search-friend-userid" required placeholder="Nhập User ID (ví dụ: tri2026)">
+                                    <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-magnifying-glass"></i> Tìm & Kết Bạn</button>
+                                </form>
+                                <div id="add-friend-result-msg" class="mt-2 text-sm"></div>
+                            </div>
+                        </div>
+
+                        <!-- Friend Requests List -->
+                        <div class="card mb-3" id="friend-requests-card" style="display:none">
+                            <div class="card-header">
+                                <h3><i class="fa-solid fa-clock-rotate-left"></i> Lời Mời Kết Bạn</h3>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="friend-requests-list" id="friend-requests-list">
+                                    <!-- Requests -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Friends List for Chat -->
+                        <div class="card flex-grow-1">
+                            <div class="card-header">
+                                <h3><i class="fa-solid fa-users"></i> Danh Sách Bạn Học</h3>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="friends-list" id="chat-friends-list">
+                                    <!-- Friends -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Direct Message Chat Window -->
+                    <div class="chat-main-pane">
+                        <div class="card chat-window-card" id="chat-window-card">
+                            <div class="card-header chat-header" id="chat-active-header">
+                                <div class="chat-user-left">
+                                    <div class="user-avatar-circle" id="chat-active-avatar">?</div>
+                                    <div>
+                                        <h3 id="chat-active-name">Chọn một bạn học để trò chuyện</h3>
+                                        <span class="user-id-badge" id="chat-active-id">@userid</span>
+                                    </div>
+                                </div>
+                                <div class="chat-header-actions">
+                                    <button class="btn-call-action" id="btn-audio-call" title="Gọi thoại" style="display:none">
+                                        <i class="fa-solid fa-phone"></i>
+                                    </button>
+                                    <button class="btn-call-action btn-video-call" id="btn-video-call" title="Gọi video" style="display:none">
+                                        <i class="fa-solid fa-video"></i>
+                                    </button>
+                                    <span class="badge-tag badge-info badge-auto-delete"><i class="fa-solid fa-shield-halved"></i> Xóa sau 7 ngày</span>
+                                </div>
+                            </div>
+
+                            <div class="card-body chat-messages-body" id="chat-messages-container">
+                                <div class="empty-state" id="chat-empty-state">
+                                    <i class="fa-solid fa-comments"></i>
+                                    <p>Chọn một người bạn từ danh sách bên trái để bắt đầu nhắn tin trò chuyện học tập!</p>
+                                </div>
+                                <!-- Chat bubbles render here -->
+                            </div>
+
+                            <div class="card-footer chat-input-footer" id="chat-input-area" style="display:none">
+                                <form id="chat-send-form">
+                                    <input type="text" id="chat-message-input" autocomplete="off" placeholder="Nhập tin nhắn trò chuyện...">
+                                    <button type="submit" class="btn btn-primary"><i class="fa-solid fa-paper-plane"></i> Gửi</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- MODAL: PREMIUM AUTHENTICATION (LOGIN / REGISTER) -->
+    <div class="modal-overlay auth-overlay active" id="auth-modal">
+        <div class="auth-shell">
+            <div class="auth-form-panel-inner">
+
+                <div class="auth-compact-header">
+                    <div class="auth-brand-logo">
+                        <i class="fa-solid fa-graduation-cap"></i>
+                    </div>
+                    <div>
+                        <h2 class="auth-title">StudyFlow</h2>
+                        <p class="auth-subtitle" id="auth-form-subtitle">Đăng nhập để tiếp tục học tập</p>
+                    </div>
+                </div>
+
+                <div class="auth-tabs">
+                    <button type="button" class="auth-tab-btn active" id="btn-show-login">
+                        <i class="fa-solid fa-right-to-bracket"></i> Đăng Nhập
+                    </button>
+                    <button type="button" class="auth-tab-btn" id="btn-show-register">
+                        <i class="fa-solid fa-user-plus"></i> Đăng Ký
+                    </button>
+                </div>
+
+                <!-- Notification Feedback Box -->
+                <div id="auth-feedback" class="auth-feedback-box" style="display:none"></div>
+
+                <!-- Login Form -->
+                <form id="login-form" class="auth-form" onsubmit="return handleUserLogin(event)">
+                    <div class="auth-field-group">
+                        <label for="login-userid-input"><i class="fa-solid fa-at"></i> User ID</label>
+                        <div class="input-with-icon">
+                            <i class="fa-solid fa-user-tag"></i>
+                            <input type="text" id="login-userid-input" placeholder="Ví dụ: tri2026" autocomplete="username">
+                        </div>
+                    </div>
+                    <div class="auth-field-group">
+                        <label for="login-password-input"><i class="fa-solid fa-lock"></i> Mật Khẩu</label>
+                        <div class="input-with-icon">
+                            <i class="fa-solid fa-key"></i>
+                            <input type="password" id="login-password-input" placeholder="Nhập mật khẩu của bạn" autocomplete="current-password">
+                            <button type="button" class="btn-toggle-pass" data-target="login-password-input" title="Hiện/Ẩn mật khẩu">
+                                <i class="fa-solid fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-primary btn-lg w-100 mt-3" id="btn-submit-login" onclick="handleUserLogin(event)">
+                        <i class="fa-solid fa-right-to-bracket"></i> Đăng Nhập Ngay
+                    </button>
+
+                    <p class="auth-switch-hint">
+                        Chưa có tài khoản?
+                        <a href="#" id="link-go-register">Đăng ký ngay</a>
+                    </p>
+                </form>
+
+                <!-- Register Form -->
+                <form id="register-form" class="auth-form" style="display:none" onsubmit="return handleUserRegister(event)">
+                    <div class="auth-field-group">
+                        <label for="reg-name-input"><i class="fa-solid fa-id-card"></i> Họ Và Tên <span class="text-danger">*</span></label>
+                        <div class="input-with-icon">
+                            <i class="fa-solid fa-user"></i>
+                            <input type="text" id="reg-name-input" placeholder="Ví dụ: Ngô Minh Trí" autocomplete="name">
+                        </div>
+                    </div>
+                    <div class="auth-field-group">
+                        <label for="reg-userid-input"><i class="fa-solid fa-at"></i> User ID Độc Nhất <span class="text-danger">*</span></label>
+                        <div class="input-with-icon">
+                            <i class="fa-solid fa-at"></i>
+                            <input type="text" id="reg-userid-input" placeholder="Ví dụ: tri2026 (viết liền không dấu)" autocomplete="username">
+                        </div>
+                    </div>
+                    <div class="auth-field-group">
+                        <label for="reg-password-input"><i class="fa-solid fa-lock"></i> Tạo Mật Khẩu <span class="text-danger">*</span></label>
+                        <div class="input-with-icon">
+                            <i class="fa-solid fa-key"></i>
+                            <input type="password" id="reg-password-input" placeholder="Tối thiểu 4 ký tự" autocomplete="new-password">
+                            <button type="button" class="btn-toggle-pass" data-target="reg-password-input" title="Hiện/Ẩn mật khẩu">
+                                <i class="fa-solid fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="auth-field-group">
+                        <label for="reg-confirm-input"><i class="fa-solid fa-lock"></i> Xác Nhận Mật Khẩu <span class="text-danger">*</span></label>
+                        <div class="input-with-icon">
+                            <i class="fa-solid fa-key"></i>
+                            <input type="password" id="reg-confirm-input" placeholder="Nhập lại mật khẩu" autocomplete="new-password">
+                            <button type="button" class="btn-toggle-pass" data-target="reg-confirm-input" title="Hiện/Ẩn mật khẩu">
+                                <i class="fa-solid fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-success btn-lg w-100 mt-3" id="btn-submit-register" onclick="handleUserRegister(event)">
+                        <i class="fa-solid fa-user-plus"></i> Tạo Tài Khoản Ngay
+                    </button>
+
+                    <p class="auth-switch-hint">
+                        Đã có tài khoản?
+                        <a href="#" id="link-go-login">Đăng nhập ngay</a>
+                    </p>
+                </form>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: LIVE STUDY OVERLAY TIMER -->
+    <div class="modal-overlay" id="live-study-modal">
+        <div class="modal-card live-study-card">
+            <div class="modal-header">
+                <div>
+                    <span class="badge-tag" id="live-study-subject-badge">Môn Học</span>
+                    <h3 id="live-study-task-title" class="mt-2">Tiêu Đề Bài Học</h3>
+                </div>
+                <button class="btn-close-modal" id="btn-close-live-study"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="live-study-body">
+                <div class="live-timer-box">
+                    <div class="live-status-pill" id="live-timer-status">Đang trong phiên học tập</div>
+                    <div class="live-stopwatch-display" id="live-stopwatch-text">00:00:00</div>
+                    <p class="live-timer-hint">Thời gian được tính tự động & tích lũy vào bài học</p>
+                </div>
+
+                <div class="quick-break-bar">
+                    <span class="break-label"><i class="fa-solid fa-mug-hot"></i> Bận việc / Nghỉ nhanh:</span>
+                    <div class="break-btns-group">
+                        <button class="btn btn-sm btn-outline break-btn" data-minutes="5">Nghỉ 5 Phút</button>
+                        <button class="btn btn-sm btn-outline break-btn" data-minutes="10">Nghỉ 10 Phút</button>
+                        <button class="btn btn-sm btn-outline break-btn" data-minutes="15">Nghỉ 15 Phút</button>
+                    </div>
+                </div>
+
+                <div class="live-controls-row">
+                    <button class="btn btn-lg btn-primary" id="btn-live-start">
+                        <i class="fa-solid fa-play"></i> Bắt Đầu Học
+                    </button>
+                    <button class="btn btn-lg btn-warning" id="btn-live-pause" style="display: none;">
+                        <i class="fa-solid fa-pause"></i> Tạm Dừng
+                    </button>
+                    <button class="btn btn-lg btn-success" id="btn-live-finish">
+                        <i class="fa-solid fa-flag-checkered"></i> Kết Thúc Học
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: HỘP THƯ CHÚC MỪNG -->
+    <div class="modal-overlay" id="mailbox-modal">
+        <div class="modal-card mailbox-modal-card">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-envelope-open-text text-warning"></i> Hộp Thư Chúc Mừng Danh Hiệu</h3>
+                <button class="btn-close-modal" id="btn-close-mailbox"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="mailbox-body">
+                <div class="mailbox-list" id="mailbox-letters-list">
+                    <!-- Dynamic letters -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: VIEW SINGLE LETTER -->
+    <div class="modal-overlay" id="letter-detail-modal">
+        <div class="modal-card letter-detail-card">
+            <div class="modal-header">
+                <span class="letter-badge-icon" id="letter-badge-icon">🎖️</span>
+                <h3 id="letter-detail-title">Tiêu Đề Thư</h3>
+                <button class="btn-close-modal" id="btn-close-letter-detail"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="letter-detail-body">
+                <div class="letter-date-stamp" id="letter-detail-date">Ngày nhận: 25/07/2026</div>
+                <div class="letter-content-box" id="letter-detail-content">
+                    Nội dung thư chúc mừng...
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" id="btn-close-letter-confirm">Đã Nhận Thư ❤️</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: ADD / EDIT TASK -->
+    <div class="modal-overlay" id="task-modal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3 id="modal-task-title"><i class="fa-solid fa-square-plus"></i> Thêm Nhiệm Vụ Học Tập Mới</h3>
+                <button class="btn-close-modal" id="btn-close-task-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form id="task-form">
+                <input type="hidden" id="task-id-input">
+                <div class="form-group">
+                    <label for="task-title-input">Tên nhiệm vụ / bài học <span class="text-danger">*</span></label>
+                    <input type="text" id="task-title-input" required placeholder="Ví dụ: Ôn 20 từ vựng Tiếng Anh bài 5, Giải 5 bài tập Toán...">
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="task-subject-select">Môn học</label>
+                        <select id="task-subject-select" required>
+                            <!-- Dynamic subjects -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="task-priority-select">Mức độ ưu tiên</label>
+                        <select id="task-priority-select">
+                            <option value="medium">⚡ Trung bình</option>
+                            <option value="high">🔥 Cao (Cần làm gấp)</option>
+                            <option value="low">🌱 Thấp (Thong thả)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="task-date-input"><i class="fa-regular fa-calendar"></i> Ngày học</label>
+                        <input type="date" id="task-date-input" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="task-time-input"><i class="fa-regular fa-clock"></i> Giờ học dự kiến</label>
+                        <input type="time" id="task-time-input" value="09:00" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="task-notes-input">Ghi chú bài học</label>
+                    <textarea id="task-notes-input" rows="3" placeholder="Chi tiết trang sách, link tài liệu, yêu cầu cần nhớ..."></textarea>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" id="btn-cancel-task-modal">Hủy bỏ</button>
+                    <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Lưu Nhiệm Vụ</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: ADD SUBJECT -->
+    <div class="modal-overlay" id="subject-modal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-book-open"></i> Thêm Môn Học Mới</h3>
+                <button class="btn-close-modal" id="btn-close-subject-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form id="subject-form">
+                <div class="form-group">
+                    <label for="subject-name-input">Tên môn học <span class="text-danger">*</span></label>
+                    <input type="text" id="subject-name-input" required placeholder="Ví dụ: Toán Học, Tiếng Anh, Lập Trình Python...">
+                </div>
+
+                <div class="form-group">
+                    <label for="subject-color-input">Màu đại diện</label>
+                    <div class="color-picker-options">
+                        <input type="color" id="subject-color-input" value="#6366f1">
+                        <span class="color-preview-label">Chọn màu sắc hiển thị nhãn môn học</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="subject-target-input">Chỉ tiêu giờ học hàng tuần (Giờ)</label>
+                    <input type="number" id="subject-target-input" value="5" min="1" max="50">
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" id="btn-cancel-subject-modal">Hủy</button>
+                    <button type="submit" class="btn btn-primary">Thêm Môn Học</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: CUỘC GỌI ĐẾN (INCOMING CALL) -->
+    <div class="incoming-call-overlay" id="incoming-call-modal">
+        <div class="incoming-call-card">
+            <div class="incoming-call-pulse"></div>
+            <div class="incoming-call-avatar" id="incoming-call-avatar">?</div>
+            <h2 class="incoming-call-name" id="incoming-call-name">Bạn Học</h2>
+            <p class="incoming-call-type" id="incoming-call-type">
+                <i class="fa-solid fa-video"></i> Cuộc gọi video đến...
+            </p>
+            <div class="incoming-call-actions">
+                <button class="call-action-btn reject-call" id="btn-reject-call" title="Từ chối">
+                    <i class="fa-solid fa-phone-slash"></i>
+                    <span>Từ chối</span>
+                </button>
+                <button class="call-action-btn accept-call" id="btn-accept-call" title="Chấp nhận">
+                    <i class="fa-solid fa-phone"></i>
+                    <span>Chấp nhận</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- OVERLAY: MÀN HÌNH CUỘC GỌI TOÀN MÀN HÌNH -->
+    <div class="call-screen-overlay" id="call-screen-overlay">
+        <!-- Video từ xa (bạn bè) -->
+        <video class="remote-video" id="remote-video" autoplay playsinline></video>
+        
+        <!-- Khi chưa bật cam remote: hiển thị avatar -->
+        <div class="remote-video-off" id="remote-video-off">
+            <div class="call-avatar-large" id="call-remote-avatar">?</div>
+            <p id="call-remote-name-display">Bạn Học</p>
+        </div>
+
+        <!-- Video bản thân (picture-in-picture nhỏ ở góc) -->
+        <div class="local-video-pip" id="local-video-pip">
+            <video class="local-video" id="local-video" autoplay playsinline muted></video>
+            <div class="local-video-off" id="local-video-off">
+                <i class="fa-solid fa-video-slash"></i>
+            </div>
+        </div>
+
+        <!-- Header cuộc gọi -->
+        <div class="call-top-bar">
+            <div class="call-info">
+                <div class="call-status-dot"></div>
+                <span class="call-partner-name" id="call-partner-name">Bạn Học</span>
+            </div>
+            <div class="call-timer" id="call-timer">00:00</div>
+        </div>
+
+        <!-- Trạng thái đang kết nối -->
+        <div class="call-connecting-state" id="call-connecting-state">
+            <div class="connecting-spinner"></div>
+            <p id="call-connecting-text">Đang kết nối...</p>
+        </div>
+
+        <!-- Thanh điều khiển cuộc gọi -->
+        <div class="call-controls-bar">
+            <button class="call-ctrl-btn" id="btn-toggle-mic" title="Bật/Tắt Microphone">
+                <i class="fa-solid fa-microphone"></i>
+            </button>
+            <button class="call-ctrl-btn" id="btn-toggle-camera" title="Bật/Tắt Camera">
+                <i class="fa-solid fa-video"></i>
+            </button>
+            <button class="call-ctrl-btn end-call-btn" id="btn-end-call" title="Kết thúc cuộc gọi">
+                <i class="fa-solid fa-phone-slash"></i>
+            </button>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
