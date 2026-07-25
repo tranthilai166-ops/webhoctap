@@ -301,17 +301,23 @@ async function refreshUserDataFromServer() {
     const serverData = await fetchUserDataFromServer(currentUser.userId);
     if (!serverData) return; // chưa có trên server hoặc đang offline -> giữ nguyên bản local
 
-    state.tasks = serverData.tasks || [];
-    state.subjects = serverData.subjects || DEFAULT_SUBJECTS;
-    state.mailbox = serverData.mailbox || DEFAULT_MAILBOX;
-    state.streak = serverData.streak || 1;
-    state.lastCheckinDate = serverData.lastCheckinDate || '';
+    // Merge tasks theo ID để đảm bảo 100% không bị mất bài học hay nhiệm vụ học tập
+    const tasksMap = new Map();
+    (state.tasks || []).forEach(t => t && t.id && tasksMap.set(t.id, t));
+    (serverData.tasks || []).forEach(t => t && t.id && tasksMap.set(t.id, t));
 
-    // Cập nhật lại bản sao trong localStorage để hoạt động offline lần sau
-    const userKey = `studyflow_userdata_${currentUser.userId}`;
-    localStorage.setItem(userKey, JSON.stringify(serverData));
+    // Merge mailbox theo ID
+    const mailboxMap = new Map();
+    (state.mailbox || []).forEach(m => m && m.id && mailboxMap.set(m.id, m));
+    (serverData.mailbox || []).forEach(m => m && m.id && mailboxMap.set(m.id, m));
 
-    initDailyCheckin();
+    state.tasks = Array.from(tasksMap.values());
+    state.subjects = (serverData.subjects && serverData.subjects.length > 0) ? serverData.subjects : state.subjects;
+    state.mailbox = Array.from(mailboxMap.values());
+    state.streak = Math.max(state.streak || 1, serverData.streak || 1);
+    state.lastCheckinDate = serverData.lastCheckinDate || state.lastCheckinDate || '';
+
+    saveUserData();
     renderDashboard();
     renderTasksPage();
     renderSubjects();
@@ -1927,35 +1933,54 @@ function initCallSystem() {
 function initPeerJS() {
     if (!currentUser) return;
 
-    // Tạo peerId duy nhất từ userId
-    const peerId = 'studyflow-' + currentUser.userId + '-' + Date.now();
-
-    myPeer = new Peer(peerId, {
+    // Cấu hình máy chủ STUN/TURN truyền tín hiệu qua 4G/5G/Firewall
+    const peerConfig = {
         config: {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
                 { urls: 'stun:stun1.l.google.com:19302' },
-                { urls: 'stun:stun2.l.google.com:19302' }
+                { urls: 'stun:stun2.l.google.com:19302' },
+                { urls: 'stun:stun3.l.google.com:19302' },
+                { urls: 'stun:stun4.l.google.com:19302' },
+                { urls: 'stun:stun.services.mozilla.com' },
+                { urls: 'stun:global.stun.twilio.com:3478' }
             ]
         }
-    });
+    };
+
+    const peerId = 'studyflow-' + currentUser.userId;
+
+    if (myPeer) {
+        try { myPeer.destroy(); } catch (e) {}
+    }
+
+    myPeer = new Peer(peerId, peerConfig);
 
     myPeer.on('open', (id) => {
         console.log('[PeerJS] Đã kết nối, Peer ID:', id);
     });
 
-    // Nhận cuộc gọi PeerJS đến (sau khi Socket signaling đã accept)
+    // Nhận cuộc gọi PeerJS đến (Receiver tự động trả lời stream khi nhận call)
     myPeer.on('call', (call) => {
-        console.log('[PeerJS] Nhận cuộc gọi peer...');
+        console.log('[PeerJS] Receiver nhận cuộc gọi peer...');
         if (localStream) {
             call.answer(localStream);
             currentCallPeer = call;
             setupCallPeerEvents(call);
+        } else {
+            navigator.mediaDevices.getUserMedia({ audio: true, video: true }).then(stream => {
+                localStream = stream;
+                call.answer(localStream);
+                currentCallPeer = call;
+                setupCallPeerEvents(call);
+            }).catch(err => {
+                console.error('[PeerJS] Lỗi lấy localStream answer:', err);
+            });
         }
     });
 
     myPeer.on('error', (err) => {
-        console.error('[PeerJS] Lỗi:', err);
+        console.error('[PeerJS] Lỗi Peer connection:', err);
     });
 }
 
@@ -2227,15 +2252,11 @@ async function acceptIncomingCall() {
         // Thông báo cho caller biết đã chấp nhận + gửi peerId
         socketIO.emit('call-accepted', {
             callerId: data.callerId,
-            accepterPeerId: myPeer?.id || ''
+            accepterPeerId: myPeer?.id || ('studyflow-' + currentUser.userId)
         });
 
-        // Kết nối PeerJS tới caller
-        if (myPeer && data.callerPeerId) {
-            const call = myPeer.call(data.callerPeerId, localStream);
-            currentCallPeer = call;
-            setupCallPeerEvents(call);
-        }
+        // Phía Receiver KHÔNG gọi myPeer.call() mà chỉ chờ Caller thực hiện cuộc gọi PeerJS đến!
+        // Receiver đã có sẵn myPeer.on('call', ...) tự động trả lời khi nhận call từ Caller.
 
         callState.incomingCallData = null;
 
@@ -2266,13 +2287,13 @@ function rejectIncomingCall() {
     callState.incomingCallData = null;
 }
 
-// --- XỬ LÝ KHI CUỘC GỌI ĐƯỢC CHẤP NHẬN (CALLER NHẬN TÍN HIỆU) ---
+// --- XỬ LÝ KHI CUỘC GỌI ĐƯỢC CHẤP NHẬN (CALLER NHẬN TÍN HIỆU TỪ RECEIVER) ---
 function handleCallAccepted(data) {
-    console.log('[Call] Đã được chấp nhận, kết nối PeerJS...');
+    console.log('[Call] Đã được chấp nhận, Caller thực hiện kết nối PeerJS tới Receiver...');
+    const targetPeerId = data.accepterPeerId || ('studyflow-' + callState.partnerId);
 
-    // Kết nối PeerJS tới accepter
-    if (myPeer && data.accepterPeerId && localStream) {
-        const call = myPeer.call(data.accepterPeerId, localStream);
+    if (myPeer && targetPeerId && localStream) {
+        const call = myPeer.call(targetPeerId, localStream);
         currentCallPeer = call;
         setupCallPeerEvents(call);
     }
