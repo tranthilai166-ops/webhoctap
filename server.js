@@ -52,6 +52,20 @@ function readJsonFile(filePath, fallback) {
 }
 
 function writeJsonFile(filePath, data) {
+    // Sao lưu bản hiện tại trước khi ghi đè (nếu file đã tồn tại và không rỗng), để
+    // luôn có 1 bản ".bak" gần nhất có thể khôi phục thủ công nếu chẳng may bản ghi mới
+    // bị lỗi hoặc rỗng bất thường (ví dụ do lỗi mạng/khởi động lại giữa chừng).
+    try {
+        if (fs.existsSync(filePath)) {
+            const currentRaw = fs.readFileSync(filePath, 'utf-8');
+            if (currentRaw && currentRaw.trim()) {
+                fs.writeFileSync(filePath + '.bak', currentRaw, 'utf-8');
+            }
+        }
+    } catch (err) {
+        console.error('Không thể tạo bản sao lưu cho', filePath, err);
+    }
+
     // Ghi ra file tạm trước rồi đổi tên, tránh hỏng file nếu server bị crash giữa chừng
     const tmpPath = filePath + '.tmp';
     fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
@@ -292,4 +306,14 @@ server.listen(PORT, () => {
     console.log(`StudyFlow server đang chạy tại cổng ${PORT}`);
     console.log(`Dữ liệu được lưu tại: ${DATA_DIR}`);
     console.log(`Socket.IO signaling & real-time messaging đã sẵn sàng.`);
+
+    // In số lượng user/friendship/message hiện có ngay khi khởi động, để kiểm tra
+    // trong log Railway sau mỗi lần deploy: nếu con số này bất ngờ về 0 sau khi bạn
+    // vừa cập nhật code, gần như chắc chắn Volume KHÔNG được gắn đúng /giữ nguyên
+    // giữa các lần deploy (kiểm tra lại Settings → Volumes → Mount Path = /date).
+    const dbAtBoot = readJsonFile(SYSTEM_DB_PATH, { users: [], friendships: [], messages: [] });
+    console.log(`[Khởi động] Dữ liệu hiện có trên volume: ${dbAtBoot.users.length} user, ${dbAtBoot.friendships.length} kết bạn, ${dbAtBoot.messages.length} tin nhắn.`);
+    if (dbAtBoot.users.length === 0) {
+        console.log('[Khởi động] ⚠️  Không thấy user nào trong system-db.json. Nếu bạn đã từng có user trước đó, kiểm tra xem Volume có đang gắn đúng mount path (mặc định /date) và có được giữ nguyên qua lần deploy này không.');
+    }
 });

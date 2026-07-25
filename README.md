@@ -99,6 +99,33 @@ DATA_DIR=./data node server.js
 ```
 Mở `http://localhost:3000`. Dữ liệu sẽ được lưu vào thư mục `./data` thay vì `/date`.
 
+## Bản sửa lỗi: mất tài khoản khi cập nhật code & tìm bạn không ra
+
+**Lỗi 1 — Mất tài khoản sau khi deploy/cập nhật file:** khi trang web load lần đầu,
+`app.js` từng **ghi đè thẳng** danh sách user trong trình duyệt bằng dữ liệu lấy về từ
+server, thay vì hợp nhất (merge) 2 bên. Nếu server vừa khởi động lại sau khi bạn cập
+nhật code mà volume trả về dữ liệu rỗng/thiếu (dù chỉ tạm thời), toàn bộ tài khoản
+trong trình duyệt bị xóa theo. Đã sửa: giờ luôn **hợp nhất** dữ liệu server + local
+(giữ lại user ở cả 2 phía), và nếu phát hiện trình duyệt đang có nhiều dữ liệu hơn
+server (dấu hiệu volume vừa bị mất dữ liệu), tự động đẩy bản hợp nhất lên lại server
+để khôi phục.
+
+**Lỗi 2 — Tìm bạn bằng User ID không ra:** lúc đăng ký, User ID được lọc bỏ mọi ký tự
+lạ (`chỉ giữ a-z, 0-9, _`), nhưng ô tìm bạn trước đây không lọc giống vậy, nên đôi khi
+gõ ID đúng nhưng không khớp. Đã sửa: dùng chung 1 hàm `normalizeUserId()` cho cả đăng
+ký, đăng nhập, và tìm bạn.
+
+**Thêm cơ chế tự sao lưu phía server:** mỗi lần server ghi đè `system-db.json` hoặc
+file dữ liệu user, nó tự lưu 1 bản `.bak` cạnh bên (ví dụ `system-db.json.bak`) chứa
+nội dung ngay trước đó. Nếu chẳng may có sự cố, bạn có thể vào volume và đổi tên file
+`.bak` thành file gốc để khôi phục thủ công.
+
+**Cách kiểm tra volume có thực sự giữ dữ liệu qua các lần deploy hay không:** mỗi lần
+server khởi động, log Railway sẽ in ra số lượng user/kết bạn/tin nhắn hiện có trên
+volume. Nếu con số này bất ngờ về 0 ngay sau khi bạn vừa deploy code mới (mà trước đó
+đã có user), gần như chắc chắn Volume **không được gắn giữ nguyên** giữa các lần
+deploy — kiểm tra lại **Settings → Volumes → Mount Path = `/date`** của service.
+
 ## Lưu ý quan trọng
 - Mật khẩu người dùng hiện đang được lưu **dạng thường** (plain text) trong
   `system-db.json`, giống hệt cách app cũ lưu trong `localStorage`. Việc chuyển

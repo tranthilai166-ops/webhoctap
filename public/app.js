@@ -95,6 +95,17 @@ async function fetchUserDataFromServer(userId) {
     }
 }
 
+// Chuẩn hóa User ID: dùng CHUNG cho đăng ký, đăng nhập, và tìm bạn bè, để đảm bảo
+// cùng một ID luôn được so khớp giống hệt nhau ở mọi nơi (trước đây ô tìm bạn không
+// lọc ký tự lạ giống lúc đăng ký, nên đôi khi tìm không ra dù tài khoản tồn tại).
+function normalizeUserId(raw) {
+    return String(raw || '')
+        .trim()
+        .toLowerCase()
+        .replace('@', '')
+        .replace(/[^a-z0-9_]/g, '');
+}
+
 // --- INITIAL STATE & DATABASE SCHEMAS ---
 const DEFAULT_SUBJECTS = [
     { id: 'subj-1', name: 'Toán Học', color: '#6366f1', targetHours: 8 },
@@ -173,16 +184,25 @@ let dailyHoursMapChartInstance = null;
 document.addEventListener('DOMContentLoaded', async () => {
     // Tải systemDB (danh sách người dùng, bạn bè, tin nhắn) từ server (volume /date) trước,
     // nếu offline hoặc server chưa có dữ liệu thì dùng bản trong localStorage như cũ.
+    // QUAN TRỌNG: KHÔNG được ghi đè thẳng systemDB bằng dữ liệu server, vì nếu server
+    // vừa khởi động lại (sau khi deploy/cập nhật code) mà volume chưa kịp sẵn sàng, hoặc
+    // có trục trặc mạng tạm thời khiến server trả về danh sách rỗng/thiếu, ghi đè trực
+    // tiếp sẽ XÓA SẠCH tài khoản đang có trong trình duyệt (kể cả khi dữ liệu gốc trên
+    // volume vẫn còn nguyên). Thay vào đó luôn HỢP NHẤT (merge) 2 bên bằng
+    // updateLocalSystemDB() — hàm này giữ lại mọi user/friendship/message ở CẢ HAI phía,
+    // không bao giờ làm mất dữ liệu chỉ vì 1 phía tạm thời rỗng.
     const serverSystemDB = await fetchSystemDBFromServer();
     if (serverSystemDB) {
-        systemDB = {
-            users: serverSystemDB.users || [],
-            friendships: serverSystemDB.friendships || [],
-            messages: serverSystemDB.messages || []
-        };
-        localStorage.setItem('studyflow_users_db', JSON.stringify(systemDB.users));
-        localStorage.setItem('studyflow_friendships', JSON.stringify(systemDB.friendships));
-        localStorage.setItem('studyflow_messages', JSON.stringify(systemDB.messages));
+        updateLocalSystemDB(serverSystemDB);
+
+        // Tự "chữa lành": nếu server vừa mất dữ liệu (ví dụ volume bị reset khi deploy)
+        // nhưng trình duyệt này vẫn còn cache đầy đủ, đẩy ngay bản đã merge lên lại
+        // server để khôi phục volume — tránh việc lần load sau lại bị coi là "mất".
+        const localUserCount = (systemDB.users || []).length;
+        const serverUserCount = (serverSystemDB.users || []).length;
+        if (localUserCount > serverUserCount) {
+            syncSystemDBToServer();
+        }
     }
 
     purgeExpiredMessages();
@@ -354,8 +374,7 @@ window.handleUserRegister = function(e) {
     const confirmInput = document.getElementById('reg-confirm-input');
 
     const name = nameInput ? nameInput.value.trim() : '';
-    let rawUserId = userIdInput ? userIdInput.value.trim().toLowerCase().replace('@', '') : '';
-    rawUserId = rawUserId.replace(/[^a-z0-9_]/g, '');
+    let rawUserId = normalizeUserId(userIdInput ? userIdInput.value : '');
     const password = passInput ? passInput.value.trim() : '';
     const confirmPassword = confirmInput ? confirmInput.value.trim() : '';
 
@@ -434,7 +453,7 @@ window.handleUserLogin = function(e) {
     const userIdInput = document.getElementById('login-userid-input');
     const passInput = document.getElementById('login-password-input');
 
-    const rawUserId = userIdInput ? userIdInput.value.trim().toLowerCase().replace('@', '') : '';
+    const rawUserId = normalizeUserId(userIdInput ? userIdInput.value : '');
     const password = passInput ? passInput.value.trim() : '';
 
     if (!rawUserId || !password) {
@@ -565,7 +584,7 @@ function initChatSystem() {
             return;
         }
 
-        const searchId = document.getElementById('search-friend-userid').value.trim().toLowerCase().replace('@', '');
+        const searchId = normalizeUserId(document.getElementById('search-friend-userid').value);
         const resultEl = document.getElementById('add-friend-result-msg');
 
         if (searchId === currentUser.userId) {
