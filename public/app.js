@@ -494,6 +494,49 @@ window.handleUserLogin = function(e) {
     return false;
 };
 
+// --- MOBILE SIDEBAR DRAWER & MAIN NAVIGATION TABS ---
+function initNavigation() {
+    const navItems = document.querySelectorAll('.nav-item');
+    const tabContents = document.querySelectorAll('.tab-content');
+    const sidebar = document.querySelector('.sidebar');
+    const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
+
+    if (btnToggleSidebar && sidebar) {
+        addTouchClick(btnToggleSidebar, (e) => {
+            if (e) e.stopPropagation();
+            sidebar.classList.toggle('active');
+        });
+    }
+
+    navItems.forEach(item => {
+        addTouchClick(item, (e) => {
+            if (e) e.stopPropagation();
+            const targetTab = item.getAttribute('data-tab');
+            if (!targetTab) return;
+
+            navItems.forEach(n => n.classList.remove('active'));
+            tabContents.forEach(tc => tc.classList.remove('active'));
+
+            item.classList.add('active');
+            const targetContent = document.getElementById(`tab-${targetTab}`);
+            if (targetContent) {
+                targetContent.classList.add('active');
+            }
+
+            if (sidebar) {
+                sidebar.classList.remove('active');
+            }
+
+            if (targetTab === 'chat') {
+                renderGroupsList();
+                renderFriendsList();
+                renderIncomingRequests();
+                renderChatMessages();
+            }
+        });
+    });
+}
+
 // --- AUTH SYSTEM SWITCH TAB EVENTS ---
 function initAuthSystem() {
     const btnShowLogin = document.getElementById('btn-show-login');
@@ -2968,3 +3011,16 @@ loadUserData = function() {
         initCallSystem();
     }, 500);
 };
+
+// --- DOM READY INITIALIZATION ---
+document.addEventListener('DOMContentLoaded', () => {
+    initNavigation();
+    initAuthSystem();
+    initChatSystem();
+
+    if (currentUser) {
+        loadUserData();
+    } else {
+        openAuthModal();
+    }
+});
