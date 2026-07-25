@@ -494,44 +494,65 @@ window.handleUserLogin = function(e) {
     return false;
 };
 
-// --- MOBILE SIDEBAR DRAWER & MAIN NAVIGATION TABS ---
-function initNavigation() {
+window.switchTab = function(targetTab) {
     const navItems = document.querySelectorAll('.nav-item');
     const tabContents = document.querySelectorAll('.tab-content');
     const sidebar = document.querySelector('.sidebar');
-    const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
 
-    if (btnToggleSidebar && sidebar) {
-        addTouchClick(btnToggleSidebar, (e) => {
+    if (!targetTab) return;
+
+    navItems.forEach(n => {
+        if (n.getAttribute('data-tab') === targetTab) {
+            n.classList.add('active');
+        } else {
+            n.classList.remove('active');
+        }
+    });
+
+    tabContents.forEach(tc => {
+        if (tc.id === `tab-${targetTab}`) {
+            tc.classList.add('active');
+        } else {
+            tc.classList.remove('active');
+        }
+    });
+
+    if (sidebar) {
+        sidebar.classList.remove('active');
+        sidebar.classList.remove('mobile-open');
+    }
+
+    if (targetTab === 'chat') {
+        renderGroupsList();
+        renderFriendsList();
+        renderIncomingRequests();
+        renderChatMessages();
+    }
+};
+
+window.toggleMobileSidebar = function() {
+    const sidebar = document.querySelector('.sidebar');
+    if (sidebar) {
+        sidebar.classList.toggle('active');
+        sidebar.classList.toggle('mobile-open');
+    }
+};
+
+// --- MOBILE SIDEBAR DRAWER & MAIN NAVIGATION TABS ---
+function initNavigation() {
+    const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
+    if (btnToggleSidebar) {
+        btnToggleSidebar.addEventListener('click', (e) => {
             if (e) e.stopPropagation();
-            sidebar.classList.toggle('active');
+            toggleMobileSidebar();
         });
     }
 
-    navItems.forEach(item => {
-        addTouchClick(item, (e) => {
-            if (e) e.stopPropagation();
+    document.querySelectorAll('.nav-item').forEach(item => {
+        item.addEventListener('click', (e) => {
             const targetTab = item.getAttribute('data-tab');
-            if (!targetTab) return;
-
-            navItems.forEach(n => n.classList.remove('active'));
-            tabContents.forEach(tc => tc.classList.remove('active'));
-
-            item.classList.add('active');
-            const targetContent = document.getElementById(`tab-${targetTab}`);
-            if (targetContent) {
-                targetContent.classList.add('active');
-            }
-
-            if (sidebar) {
-                sidebar.classList.remove('active');
-            }
-
-            if (targetTab === 'chat') {
-                renderGroupsList();
-                renderFriendsList();
-                renderIncomingRequests();
-                renderChatMessages();
+            if (targetTab) {
+                switchTab(targetTab);
             }
         });
     });
