@@ -4017,7 +4017,7 @@ async function startVocabImport() {
 
         for (let modelName of generateModels) {
             try {
-                const url = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + geminiApiKey;
+                const url = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + encodeURIComponent(geminiApiKey);
                 
                 const parts = [{ text: promptText }];
                 if (base64String) {
@@ -4029,9 +4029,15 @@ async function startVocabImport() {
                     });
                 }
 
+                const headers = { 'Content-Type': 'application/json' };
+                if (geminiApiKey.startsWith('AQ.')) {
+                    headers['Authorization'] = 'Bearer ' + geminiApiKey;
+                    headers['x-goog-api-key'] = geminiApiKey;
+                }
+
                 const response = await fetch(url, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: headers,
                     body: JSON.stringify({
                         contents: [{ parts: parts }],
                         generationConfig: { temperature: 0.2 }
@@ -4040,6 +4046,9 @@ async function startVocabImport() {
                 
                 if (!response.ok) {
                     const errData = await response.json().catch(() => ({}));
+                    if (response.status === 401) {
+                        throw new Error("Lỗi 401 (Unauthenticated): Mã Key bạn nhập không thể xác thực với Google Gemini. Vui lòng vào aistudio.google.com/app/apikey, tạo API Key mới (dạng AIzaSy...) và dán lại!");
+                    }
                     throw new Error(errData.error?.message || ("HTTP " + response.status + ": " + response.statusText));
                 }
                 
