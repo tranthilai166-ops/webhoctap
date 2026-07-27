@@ -159,7 +159,8 @@ let state = {
     theme: localStorage.getItem('studyflow_theme') || 'dark',
     currentPeriod: 'week',
     activeChatFriendId: null,
-    activeGroupId: null
+    activeGroupId: null,
+    exercises: []
 };
 
 // Live Study Session Overlay State
@@ -268,7 +269,8 @@ function saveUserData() {
         subjects: state.subjects,
         mailbox: state.mailbox,
         streak: state.streak,
-        lastCheckinDate: state.lastCheckinDate
+        lastCheckinDate: state.lastCheckinDate,
+        exercises: state.exercises
     };
     localStorage.setItem(userKey, JSON.stringify(userData));
     localStorage.setItem('studyflow_current_user', JSON.stringify(currentUser));
@@ -291,12 +293,14 @@ function loadUserData() {
         state.mailbox = saved.mailbox || DEFAULT_MAILBOX;
         state.streak = saved.streak || 1;
         state.lastCheckinDate = saved.lastCheckinDate || '';
+        state.exercises = saved.exercises || [];
     } else {
         state.tasks = [];
         state.subjects = DEFAULT_SUBJECTS;
         state.mailbox = DEFAULT_MAILBOX;
         state.streak = 1;
         state.lastCheckinDate = '';
+        state.exercises = [];
     }
 
     const nameEl = document.getElementById('sidebar-user-name');
@@ -3089,6 +3093,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initNavigation();
     initAuthSystem();
     initChatSystem();
+    initExercises();
 
     if (currentUser) {
         loadUserData();
@@ -3096,3 +3101,247 @@ document.addEventListener('DOMContentLoaded', () => {
         openAuthModal();
     }
 });
+
+// ==========================================
+// BÀI TẬP & LUYỆN TẬP (EXERCISES FEATURE)
+// ==========================================
+
+function initExercises() {
+    const btnAddModal = document.getElementById('btn-add-exercise-modal');
+    const modal = document.getElementById('exercise-modal');
+    const btnClose = document.getElementById('btn-close-exercise-modal');
+    const btnCancel = document.getElementById('btn-cancel-exercise');
+    const form = document.getElementById('exercise-form');
+    
+    if (btnAddModal) {
+        btnAddModal.addEventListener('click', () => {
+            openExerciseModal();
+        });
+    }
+
+    if (btnClose) btnClose.addEventListener('click', closeExerciseModal);
+    if (btnCancel) btnCancel.addEventListener('click', closeExerciseModal);
+
+    if (form) {
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            saveExercise();
+        });
+    }
+
+    const searchInput = document.getElementById('exercise-search-input');
+    const statusSelect = document.getElementById('filter-exercise-status');
+    const subjSelect = document.getElementById('filter-exercise-subject');
+
+    if (searchInput) searchInput.addEventListener('input', renderExercises);
+    if (statusSelect) statusSelect.addEventListener('change', renderExercises);
+    if (subjSelect) subjSelect.addEventListener('change', renderExercises);
+
+    // Initial render when tab switches or loaded
+    const tabExercises = document.getElementById('tab-exercises');
+    if (tabExercises) {
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                if (mutation.target.classList.contains('active')) {
+                    populateExerciseSubjects();
+                    renderExercises();
+                }
+            });
+        });
+        observer.observe(tabExercises, { attributes: true, attributeFilter: ['class'] });
+    }
+}
+
+function populateExerciseSubjects() {
+    const selects = [
+        document.getElementById('exercise-subject-select'),
+        document.getElementById('filter-exercise-subject')
+    ];
+    selects.forEach(sel => {
+        if (!sel) return;
+        const currentVal = sel.value;
+        sel.innerHTML = sel.id === 'filter-exercise-subject' ? '<option value="all">Tất cả môn học</option>' : '<option value="">-- Chọn môn học --</option>';
+        state.subjects.forEach(subj => {
+            const opt = document.createElement('option');
+            opt.value = subj.id;
+            opt.textContent = subj.name;
+            sel.appendChild(opt);
+        });
+        if (currentVal && Array.from(sel.options).some(o => o.value === currentVal)) {
+            sel.value = currentVal;
+        }
+    });
+}
+
+function openExerciseModal(exercise = null) {
+    populateExerciseSubjects();
+    const modal = document.getElementById('exercise-modal');
+    const title = document.getElementById('exercise-modal-title');
+    const form = document.getElementById('exercise-form');
+    
+    if (exercise) {
+        title.innerHTML = '<i class="fa-solid fa-pen-ruler"></i> Chỉnh Sửa Bài Tập';
+        document.getElementById('exercise-id').value = exercise.id;
+        document.getElementById('exercise-title').value = exercise.title || '';
+        document.getElementById('exercise-subject-select').value = exercise.subjectId || '';
+        document.getElementById('exercise-due-date').value = exercise.dueDate || '';
+        document.getElementById('exercise-desc').value = exercise.desc || '';
+    } else {
+        title.innerHTML = '<i class="fa-solid fa-pen-ruler"></i> Thêm Bài Tập Mới';
+        form.reset();
+        document.getElementById('exercise-id').value = '';
+    }
+    
+    modal.classList.add('active');
+}
+
+function closeExerciseModal() {
+    const modal = document.getElementById('exercise-modal');
+    if (modal) modal.classList.remove('active');
+}
+
+function saveExercise() {
+    const id = document.getElementById('exercise-id').value;
+    const title = document.getElementById('exercise-title').value.trim();
+    const subjectId = document.getElementById('exercise-subject-select').value;
+    const dueDate = document.getElementById('exercise-due-date').value;
+    const desc = document.getElementById('exercise-desc').value.trim();
+
+    if (!title || !subjectId) {
+        alert('Vui lòng nhập đầy đủ Tiêu đề và Môn học!');
+        return;
+    }
+
+    if (!state.exercises) state.exercises = [];
+
+    if (id) {
+        const ex = state.exercises.find(e => e.id === id);
+        if (ex) {
+            ex.title = title;
+            ex.subjectId = subjectId;
+            ex.dueDate = dueDate;
+            ex.desc = desc;
+        }
+    } else {
+        state.exercises.push({
+            id: 'ex-' + Date.now(),
+            title,
+            subjectId,
+            dueDate,
+            desc,
+            completed: false,
+            createdAt: new Date().toISOString()
+        });
+    }
+
+    saveUserData();
+    closeExerciseModal();
+    renderExercises();
+    updatePendingExerciseCount();
+}
+
+function deleteExercise(id) {
+    if (confirm('Bạn có chắc chắn muốn xóa bài tập này?')) {
+        state.exercises = state.exercises.filter(e => e.id !== id);
+        saveUserData();
+        renderExercises();
+        updatePendingExerciseCount();
+    }
+}
+
+function toggleExerciseComplete(id) {
+    const ex = state.exercises.find(e => e.id === id);
+    if (ex) {
+        ex.completed = !ex.completed;
+        saveUserData();
+        renderExercises();
+        updatePendingExerciseCount();
+    }
+}
+
+function updatePendingExerciseCount() {
+    if (!state.exercises) state.exercises = [];
+    const pendingCount = state.exercises.filter(e => !e.completed).length;
+    const badge = document.getElementById('pending-exercise-count-badge');
+    if (badge) {
+        badge.textContent = pendingCount;
+        badge.style.display = pendingCount > 0 ? 'inline-block' : 'none';
+    }
+}
+
+// Gọi updatePendingExerciseCount mỗi khi load user data
+const _origLoadUserDataForExercises = loadUserData;
+loadUserData = function() {
+    _origLoadUserDataForExercises();
+    if (typeof updatePendingExerciseCount === 'function') {
+        updatePendingExerciseCount();
+    }
+};
+
+function renderExercises() {
+    const container = document.getElementById('full-exercises-list');
+    const summary = document.getElementById('exercise-summary-counter');
+    if (!container) return;
+
+    if (!state.exercises) state.exercises = [];
+
+    const searchText = (document.getElementById('exercise-search-input')?.value || '').toLowerCase();
+    const statusFilter = document.getElementById('filter-exercise-status')?.value || 'all';
+    const subjFilter = document.getElementById('filter-exercise-subject')?.value || 'all';
+
+    let filtered = state.exercises.filter(ex => {
+        const matchSearch = ex.title.toLowerCase().includes(searchText) || (ex.desc || '').toLowerCase().includes(searchText);
+        const matchStatus = statusFilter === 'all' || (statusFilter === 'completed' ? ex.completed : !ex.completed);
+        const matchSubj = subjFilter === 'all' || ex.subjectId === subjFilter;
+        return matchSearch && matchStatus && matchSubj;
+    });
+
+    // Sort: pending first, then by due date
+    filtered.sort((a, b) => {
+        if (a.completed !== b.completed) return a.completed ? 1 : -1;
+        if (a.dueDate && b.dueDate) return new Date(a.dueDate) - new Date(b.dueDate);
+        if (a.dueDate) return -1;
+        if (b.dueDate) return 1;
+        return 0;
+    });
+
+    container.innerHTML = '';
+    if (summary) summary.textContent = `Hiển thị ${filtered.length} bài tập`;
+
+    if (filtered.length === 0) {
+        container.innerHTML = `<div class="empty-state">
+            <div class="empty-icon"><i class="fa-solid fa-clipboard-list"></i></div>
+            <p>Không có bài tập nào phù hợp.</p>
+        </div>`;
+        return;
+    }
+
+    filtered.forEach(ex => {
+        const subj = state.subjects.find(s => s.id === ex.subjectId) || { name: 'Không rõ', color: '#888' };
+        
+        const card = document.createElement('div');
+        card.className = \`task-item \${ex.completed ? 'completed' : ''}\`;
+        
+        const dueText = ex.dueDate ? \`<span class="task-date"><i class="fa-solid fa-clock"></i> Hạn nộp: \${ex.dueDate}</span>\` : '';
+        
+        card.innerHTML = \`
+            <div class="task-checkbox \${ex.completed ? 'checked' : ''}" onclick="toggleExerciseComplete('\${ex.id}')">
+                <i class="fa-solid fa-check"></i>
+            </div>
+            <div class="task-content">
+                <h4 class="task-title" style="text-decoration: \${ex.completed ? 'line-through' : 'none'}">\${ex.title}</h4>
+                \${ex.desc ? \`<p class="task-desc" style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">\${ex.desc}</p>\` : ''}
+                <div class="task-meta">
+                    <span class="task-subject" style="background: \${subj.color}20; color: \${subj.color}"><i class="fa-solid fa-tag"></i> \${subj.name}</span>
+                    \${dueText}
+                </div>
+            </div>
+            <div class="task-actions">
+                <button class="icon-btn edit" onclick='openExerciseModal(\${JSON.stringify(ex).replace(/'/g, "&#39;")})' title="Sửa"><i class="fa-solid fa-pen"></i></button>
+                <button class="icon-btn danger" onclick="deleteExercise('\${ex.id}')" title="Xóa"><i class="fa-solid fa-trash"></i></button>
+            </div>
+        \`;
+        container.appendChild(card);
+    });
+}
+
