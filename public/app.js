@@ -3628,7 +3628,7 @@ async function callGeminiToGenerateQuiz(base64String, mimeType, topic) {
     }
 
     if (generateModels.length === 0) {
-        generateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+        generateModels = ['gemini-2.0-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
     } else {
         generateModels.sort((a, b) => {
             let scoreA = a.includes('flash') ? 2 : (a.includes('pro') ? 1 : 0);
@@ -3695,7 +3695,7 @@ Chú ý: "answer" là index của mảng options (0, 1, 2, 3). Các câu trả l
             let resText = data.candidates[0].content.parts[0].text;
             
             // Clean up markdown block if any
-            resText = resText.replace(/^\s*```json/i, '').replace(/```\s*$/, '').trim();
+                resText = resText.replace(/```json/gi, '').replace(/```/g, '').trim(); const jsonMatch = resText.match(/\[[\s\S]*\]/); resText = jsonMatch ? jsonMatch[0] : resText;
             
             try {
                 return JSON.parse(resText);
@@ -3976,7 +3976,7 @@ async function startVocabImport() {
         
         progressText.textContent = 'AI đang bóc tách và tự động chia nhóm từ vựng (khoảng 5-15 giây)...';
         
-        let generateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+        let generateModels = ['gemini-2.0-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
         const prompt = `Bạn là hệ thống bóc tách từ vựng tiếng Anh. Dựa vào file tôi đính kèm (có thể là PDF, hình ảnh, văn bản hoặc Excel), hãy trích xuất TẤT CẢ từ vựng tiếng Anh xuất hiện trong file cùng với nghĩa tiếng Việt của chúng.
 
 Quy tắc gom nhóm (CỰC KỲ QUAN TRỌNG):
@@ -4020,7 +4020,7 @@ Hãy trả về DUY NHẤT một mảng JSON (không có markdown json hoặc gi
                 
                 const data = await response.json();
                 let resText = data.candidates[0].content.parts[0].text;
-                resText = resText.replace(/^\\s*```json/i, '').replace(/```\\s*$/, '').trim();
+                resText = resText.replace(/```json/gi, '').replace(/```/g, '').trim(); const jsonMatch = resText.match(/\[[\s\S]*\]/); resText = jsonMatch ? jsonMatch[0] : resText;
                 resJson = JSON.parse(resText);
                 break;
             } catch (err) {
