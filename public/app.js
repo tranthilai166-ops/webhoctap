@@ -3619,7 +3619,7 @@ async function callGeminiToGenerateQuiz(base64String, mimeType, topic) {
                 generateModels = listData.models.filter(m => 
                     m.supportedGenerationMethods && 
                     m.supportedGenerationMethods.includes('generateContent') &&
-                    m.name.includes('gemini')
+                    m.name.includes('gemini') && !m.name.includes('computer-use') && !m.name.includes('imagen') && !m.name.includes('embedding') && (m.name.includes('flash') || m.name.includes('pro'))
                 ).map(m => m.name.replace('models/', ''));
             }
         }
@@ -3631,8 +3631,8 @@ async function callGeminiToGenerateQuiz(base64String, mimeType, topic) {
         generateModels = ['gemini-2.0-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
     } else {
         generateModels.sort((a, b) => {
-            let scoreA = a.includes('flash') ? 2 : (a.includes('pro') ? 1 : 0);
-            let scoreB = b.includes('flash') ? 2 : (b.includes('pro') ? 1 : 0);
+            let scoreA = a.includes('2.0-flash') ? 4 : (a.includes('1.5-flash') ? 3 : (a.includes('flash') ? 2 : (a.includes('pro') ? 1 : 0)));
+            let scoreB = b.includes('2.0-flash') ? 4 : (b.includes('1.5-flash') ? 3 : (b.includes('flash') ? 2 : (b.includes('pro') ? 1 : 0)));
             return scoreB - scoreA;
         });
     }
@@ -4010,7 +4010,7 @@ async function startVocabImport() {
                 const listData = await listRes.json();
                 if (listData.models && listData.models.length > 0) {
                     generateModels = listData.models
-                        .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent') && m.name.includes('gemini'))
+                        .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent') && m.name.includes('gemini') && !m.name.includes('computer-use') && !m.name.includes('imagen') && !m.name.includes('embedding') && (m.name.includes('flash') || m.name.includes('pro')))
                         .map(m => m.name.replace('models/', ''));
                 }
             } else if (listRes.status === 400 || listRes.status === 403) {
@@ -4026,8 +4026,8 @@ async function startVocabImport() {
             generateModels = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
         } else {
             generateModels.sort((a, b) => {
-                let scoreA = a.includes('flash') ? 2 : (a.includes('pro') ? 1 : 0);
-                let scoreB = b.includes('flash') ? 2 : (b.includes('pro') ? 1 : 0);
+                let scoreA = a.includes('2.0-flash') ? 4 : (a.includes('1.5-flash') ? 3 : (a.includes('flash') ? 2 : (a.includes('pro') ? 1 : 0)));
+                let scoreB = b.includes('2.0-flash') ? 4 : (b.includes('1.5-flash') ? 3 : (b.includes('flash') ? 2 : (b.includes('pro') ? 1 : 0)));
                 return scoreB - scoreA;
             });
         }
