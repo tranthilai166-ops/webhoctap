@@ -3515,15 +3515,21 @@ async function extractTextFromPDF(file) {
 async function callGeminiToGenerateQuiz(text, topic) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
     
-    const prompt = `Bạn là một giáo viên chuyên nghiệp. Dựa vào nội dung tài liệu tôi cung cấp dưới đây, hãy tạo ra 5 đến 10 câu hỏi trắc nghiệm khách quan.
+    const prompt = `Bạn là một hệ thống bóc tách và tạo bài tập trắc nghiệm thông minh. Dựa vào nội dung tài liệu tôi cung cấp dưới đây, hãy tạo ra danh sách các câu hỏi trắc nghiệm khách quan (tối đa 30 câu).
 ${topic ? "YÊU CẦU THÊM TỪ HỌC SINH: " + topic : ""}
+CHỈ DẪN QUAN TRỌNG:
+- Nếu tài liệu cung cấp đã có sẵn các câu hỏi trắc nghiệm, hãy bóc tách CHÍNH XÁC các câu hỏi và các lựa chọn (A, B, C, D) đó.
+- Nếu tài liệu có sẵn đáp án, BẮT BUỘC phải dùng đáp án của tài liệu.
+- Nếu tài liệu không có đáp án, hãy tự phân tích nội dung và đưa ra đáp án chính xác nhất.
+- Nếu tài liệu chỉ là văn bản lý thuyết thông thường (không có câu hỏi), hãy TỰ ĐỘNG TẠO ra 10 - 20 câu hỏi trắc nghiệm hay nhất để kiểm tra kiến thức.
+
 Hãy trả về DUY NHẤT một mảng JSON (không có markdown \`\`\`json hoặc giải thích thêm) theo đúng cấu trúc sau:
 [
   {
     "question": "Nội dung câu hỏi 1",
     "options": ["Đáp án A", "Đáp án B", "Đáp án C", "Đáp án D"],
     "answer": 0,
-    "explanation": "Giải thích vì sao đáp án này đúng"
+    "explanation": "Giải thích chi tiết vì sao đáp án này đúng"
   }
 ]
 Chú ý: \`answer\` là index của mảng options (0, 1, 2, 3). Các câu trả lời phải là tiếng Việt nếu tài liệu tiếng Việt.

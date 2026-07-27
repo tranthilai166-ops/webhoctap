@@ -19,6 +19,8 @@
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <!-- PeerJS CDN for WebRTC -->
     <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -742,8 +744,7 @@ margin-bottom: 10px;"></i>
                       <p>Kéo thả file PDF/TXT vào đây hoặc <strong>Click để chọn file</strong></p>
                       <p id="ai-quiz-file-name" style="margin-top: 10px; font-weight: 600; color: 
 var(--primary-color);"></p>
-                      <small style="color: var(--text-secondary);">Hệ thống sẽ quét nội dung và tự tạo 5-10 câu trắc 
-nghiệm</small>
+                      <small style="color: var(--text-secondary);">Hệ thống sẽ bóc tách câu hỏi có sẵn hoặc tự tạo tối đa 30 câu trắc nghiệm</small>
                       <input type="file" id="ai-quiz-file-input" accept=".pdf,.txt" style="display: none;">
                   </div>
                   
