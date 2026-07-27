@@ -3522,24 +3522,22 @@ async function startAiGeneration() {
     
     try {
         progressText.textContent = 'Đang đọc nội dung file...';
-        let extractedText = '';
         
-        if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
-            extractedText = await extractTextFromPDF(file);
-        } else {
-            extractedText = await file.text();
-        }
+        // Read file as base64 for Gemini inlineData and for saving
+        const base64Data = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
         
-        if(!extractedText || extractedText.trim().length < 50) {
-            throw new Error('Nội dung file quá ngắn hoặc không thể đọc được chữ (có thể PDF chỉ chứa ảnh).');
-        }
-
-        // Cut text to avoid token limits if it's too huge
-        const textToProcess = extractedText.substring(0, 20000);
+        // base64Data is in format "data:mime/type;base64,....."
+        const mimeType = base64Data.split(';')[0].split(':')[1];
+        const base64String = base64Data.split(',')[1];
         
-        progressText.textContent = 'AI đang phân tích và tạo bài trắc nghiệm (sẽ mất khoảng 5-15 giây)...';
+        progressText.textContent = 'AI đang phân tích tài liệu và tạo bài trắc nghiệm (sẽ mất khoảng 5-15 giây)...';
         
-        const generatedQuiz = await callGeminiToGenerateQuiz(textToProcess, topic);
+        const generatedQuiz = await callGeminiToGenerateQuiz(base64String, mimeType, topic);
         
         if(generatedQuiz && generatedQuiz.length > 0) {
             closeAiQuizModal();
@@ -3553,7 +3551,11 @@ async function startAiGeneration() {
                 desc: topic || 'Bài tập tạo tự động từ tài liệu.',
                 completed: false,
                 isQuiz: true,
-                quizData: generatedQuiz
+                quizData: generatedQuiz,
+                attachedFile: {
+                    name: file.name,
+                    data: base64Data
+                }
             };
             state.exercises.unshift(quizEx);
             saveUserData();
@@ -3596,7 +3598,7 @@ async function extractTextFromPDF(file) {
     return fullText;
 }
 
-async function callGeminiToGenerateQuiz(text, topic) {
+async function callGeminiToGenerateQuiz(base64String, mimeType, topic) {
     let generateModels = [];
     
     // 1. Fetch available models dynamically
@@ -3606,7 +3608,6 @@ async function callGeminiToGenerateQuiz(text, topic) {
         if (listRes.ok) {
             const listData = await listRes.json();
             if (listData.models && listData.models.length > 0) {
-                // Lọc các model hỗ trợ generateContent và chứa chữ gemini
                 generateModels = listData.models.filter(m => 
                     m.supportedGenerationMethods && 
                     m.supportedGenerationMethods.includes('generateContent') &&
@@ -3618,16 +3619,9 @@ async function callGeminiToGenerateQuiz(text, topic) {
         console.warn('Không lấy được danh sách model, dùng danh sách mặc định.', err);
     }
 
-    // Danh sách dự phòng nếu không tải được từ API
     if (generateModels.length === 0) {
-        generateModels = [
-            'gemini-2.0-flash', 
-            'gemini-1.5-flash', 
-            'gemini-1.5-pro',
-            'gemini-2.0-flash-lite'
-        ];
+        generateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
     } else {
-        // Ưu tiên flash, sau đó là pro
         generateModels.sort((a, b) => {
             let scoreA = a.includes('flash') ? 2 : (a.includes('pro') ? 1 : 0);
             let scoreB = b.includes('flash') ? 2 : (b.includes('pro') ? 1 : 0);
@@ -3637,9 +3631,10 @@ async function callGeminiToGenerateQuiz(text, topic) {
 
     let lastError = null;
     
-    const prompt = `Bạn là một hệ thống bóc tách và tạo bài tập trắc nghiệm thông minh. Dựa vào nội dung tài liệu tôi cung cấp dưới đây, hãy tạo ra danh sách các câu hỏi trắc nghiệm khách quan (tối đa 30 câu).
+    const prompt = `Bạn là một hệ thống bóc tách và tạo bài tập trắc nghiệm thông minh. Dựa vào nội dung file đính kèm, hãy tạo ra danh sách các câu hỏi trắc nghiệm khách quan (tối đa 30 câu).
 ${topic ? "YÊU CẦU THÊM TỪ HỌC SINH: " + topic : ""}
 CHỈ DẪN QUAN TRỌNG:
+- Tài liệu đính kèm có thể là văn bản, ảnh chụp đề thi hoặc PDF. Hãy đọc cẩn thận.
 - Nếu tài liệu cung cấp đã có sẵn các câu hỏi trắc nghiệm, hãy bóc tách CHÍNH XÁC các câu hỏi và các lựa chọn (A, B, C, D) đó.
 - Nếu tài liệu có sẵn đáp án, BẮT BUỘC phải dùng đáp án của tài liệu.
 - Nếu tài liệu không có đáp án, hãy tự phân tích nội dung và đưa ra đáp án chính xác nhất.
@@ -3655,11 +3650,6 @@ Hãy trả về DUY NHẤT một mảng JSON (không có markdown \`\`\`json ho�
   }
 ]
 Chú ý: \`answer\` là index của mảng options (0, 1, 2, 3). Các câu trả lời phải là tiếng Việt nếu tài liệu tiếng Việt.
-
-TÀI LIỆU CỦA HỌC SINH:
-"""
-${text}
-"""
     `.trim();
 
     // 2. Thử từng model cho đến khi thành công
@@ -3671,7 +3661,17 @@ ${text}
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    contents: [{ parts: [{ text: prompt }] }],
+                    contents: [{
+                        parts: [
+                            { text: prompt },
+                            {
+                                inlineData: {
+                                    mimeType: mimeType,
+                                    data: base64String
+                                }
+                            }
+                        ]
+                    }],
                     generationConfig: {
                         temperature: 0.2
                     }
@@ -3720,23 +3720,50 @@ window.openQuizExercise = function(id) {
     
     currentQuizExerciseId = id;
     
-    // Xóa đáp án cũ nếu có để tránh lỗi hiển thị khi mở lại chưa nộp bài
-    ex.quizData.forEach(q => delete q.userAnswer);
+    // Nếu bài tập chưa hoàn thành, xóa đáp án cũ để làm lại
+    if (!ex.completed) {
+        ex.quizData.forEach(q => delete q.userAnswer);
+    }
     
-    renderTakeQuizModal(ex.quizData);
-};
-
-window.retakeQuiz = function() {
-    if (currentQuizData) {
-        currentQuizData.forEach(q => delete q.userAnswer);
-        renderTakeQuizModal(currentQuizData);
+    renderTakeQuizModal(ex.quizData, ex);
+    
+    // Nếu bài tập đã hoàn thành, tự động hiển thị kết quả (điểm số cũ)
+    if (ex.completed) {
+        submitQuiz(true); // isReopen = true
     }
 };
 
-function renderTakeQuizModal(quizArray) {
+window.retakeQuiz = function() {
+    if (currentQuizData && currentQuizExerciseId) {
+        const ex = state.exercises.find(e => e.id === currentQuizExerciseId);
+        if (ex) {
+            ex.completed = false;
+            ex.score = 0;
+            saveUserData();
+            renderExercises();
+        }
+        
+        currentQuizData.forEach(q => delete q.userAnswer);
+        renderTakeQuizModal(currentQuizData, ex);
+    }
+};
+
+function renderTakeQuizModal(quizArray, ex) {
     currentQuizData = quizArray;
     const container = document.getElementById('quiz-questions-container');
     container.innerHTML = '';
+    
+    // Hiển thị hình ảnh minh họa nếu file đính kèm là ảnh
+    if (ex && ex.attachedFile && ex.attachedFile.data.startsWith('data:image/')) {
+        const imgHeader = document.createElement('div');
+        imgHeader.style.marginBottom = '20px';
+        imgHeader.style.textAlign = 'center';
+        imgHeader.innerHTML = `
+            <p style="font-weight: bold; margin-bottom: 10px;">Hình ảnh tài liệu đính kèm:</p>
+            <img src="${ex.attachedFile.data}" style="max-width: 100%; max-height: 400px; border-radius: 8px; border: 1px solid var(--border-color);">
+        `;
+        container.appendChild(imgHeader);
+    }
     
     quizArray.forEach((q, idx) => {
         const qCard = document.createElement('div');
@@ -3772,14 +3799,16 @@ function selectQuizOption(el, qIdx, optIdx) {
     currentQuizData[qIdx].userAnswer = optIdx;
 }
 
-function submitQuiz() {
-    let unanswered = 0;
-    currentQuizData.forEach(q => {
-        if(q.userAnswer === undefined) unanswered++;
-    });
-    
-    if(unanswered > 0) {
-        if(!confirm(`Bạn còn ${unanswered} câu chưa trả lời. Bạn có chắc chắn muốn nộp bài?`)) return;
+function submitQuiz(isReopen = false) {
+    if (!isReopen) {
+        let unanswered = 0;
+        currentQuizData.forEach(q => {
+            if(q.userAnswer === undefined) unanswered++;
+        });
+        
+        if(unanswered > 0) {
+            if(!confirm(`Bạn còn ${unanswered} câu chưa trả lời. Bạn có chắc chắn muốn nộp bài?`)) return;
+        }
     }
     
     let score = 0;
@@ -3825,12 +3854,14 @@ function submitQuiz() {
     
     document.getElementById('btn-submit-quiz').style.display = 'none';
     
-    if (currentQuizExerciseId) {
+    if (!isReopen && currentQuizExerciseId) {
         const ex = state.exercises.find(e => e.id === currentQuizExerciseId);
         if (ex) {
             ex.completed = true;
+            ex.score = score;
             saveUserData();
             renderExercises();
+            if (typeof updatePendingExerciseCount === 'function') updatePendingExerciseCount();
         }
     }
 }
