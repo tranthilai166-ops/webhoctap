@@ -2902,3 +2902,66 @@ input:checked + .slider:before {
     margin-bottom: 4px;
     margin-left: 4px;
 }
+
+/* ==========================================
+   AI QUIZ STYLES
+   ========================================== */
+
+.quiz-question-card {
+    background: var(--surface-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow-sm);
+}
+
+.quiz-question-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 15px;
+    color: var(--text-primary);
+}
+
+.quiz-options-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.quiz-option {
+    padding: 12px 15px;
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: var(--bg-color);
+    font-weight: 500;
+}
+
+.quiz-option:hover {
+    border-color: var(--primary-color);
+    background: var(--primary-color-10);
+}
+
+.quiz-option.selected {
+    border-color: var(--primary-color);
+    background: var(--primary-color-20);
+}
+
+.quiz-option.correct {
+    border-color: var(--success-color);
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--success-color);
+}
+
+.quiz-option.incorrect {
+    border-color: var(--danger-color);
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--danger-color);
+}
+
+.ai-quiz-upload-zone:hover {
+    border-color: var(--primary-color);
+    background: var(--primary-color-10);
+}

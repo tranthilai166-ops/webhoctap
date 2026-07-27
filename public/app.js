@@ -226,7 +226,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initLiveStudyModal();
     initMailbox();
     initAuthSystem();
-    initChatSystem();
+    // initChatSystem(); // Disabled
 
     // KIỂM TRA ĐĂNG NHẬP: NẾU CHƯA ĐĂNG NHẬP THÌ HỆ THỐNG BẬT MODAL ĐĂNG NHẬP MẶC ĐỊNH
     if (!currentUser) {
@@ -3092,8 +3092,9 @@ loadUserData = function() {
 document.addEventListener('DOMContentLoaded', () => {
     initNavigation();
     initAuthSystem();
-    initChatSystem();
+    // initChatSystem(); // Disabled
     initExercises();
+    if(typeof initAiQuizSystem === 'function') initAiQuizSystem();
 
     if (currentUser) {
         loadUserData();
@@ -3345,3 +3346,316 @@ function renderExercises() {
     });
 }
 
+// ==========================================
+// AI QUIZ GENERATOR FEATURE
+// ==========================================
+
+let geminiApiKey = localStorage.getItem('gemini_api_key') || '';
+let currentQuizData = [];
+
+function initAiQuizSystem() {
+    const btnOpenConfig = document.getElementById('btn-open-ai-config');
+    const btnSaveConfig = document.getElementById('btn-save-ai-config');
+    const btnCloseConfig = document.getElementById('btn-close-ai-config-modal');
+    const btnCancelConfig = document.getElementById('btn-cancel-ai-config');
+    
+    const btnOpenQuiz = document.getElementById('btn-open-ai-quiz-modal');
+    const btnCloseQuiz = document.getElementById('btn-close-ai-quiz-modal');
+    const btnCancelQuiz = document.getElementById('btn-cancel-ai-quiz');
+    const btnStartGen = document.getElementById('btn-start-ai-gen');
+    
+    const fileInput = document.getElementById('ai-quiz-file-input');
+    const uploadZone = document.getElementById('ai-quiz-upload-zone');
+    
+    const btnCloseTake = document.getElementById('btn-close-take-quiz-modal');
+    const btnCancelTake = document.getElementById('btn-cancel-take-quiz');
+    const btnSubmitQuiz = document.getElementById('btn-submit-quiz');
+
+    if(btnOpenConfig) btnOpenConfig.addEventListener('click', openAiConfigModal);
+    if(btnSaveConfig) btnSaveConfig.addEventListener('click', saveAiConfig);
+    if(btnCloseConfig) btnCloseConfig.addEventListener('click', closeAiConfigModal);
+    if(btnCancelConfig) btnCancelConfig.addEventListener('click', closeAiConfigModal);
+    
+    if(btnOpenQuiz) btnOpenQuiz.addEventListener('click', openAiQuizModal);
+    if(btnCloseQuiz) btnCloseQuiz.addEventListener('click', closeAiQuizModal);
+    if(btnCancelQuiz) btnCancelQuiz.addEventListener('click', closeAiQuizModal);
+    if(btnStartGen) btnStartGen.addEventListener('click', startAiGeneration);
+    
+    if(btnCloseTake) btnCloseTake.addEventListener('click', closeTakeQuizModal);
+    if(btnCancelTake) btnCancelTake.addEventListener('click', closeTakeQuizModal);
+    if(btnSubmitQuiz) btnSubmitQuiz.addEventListener('click', submitQuiz);
+
+    if(uploadZone && fileInput) {
+        uploadZone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (e) => {
+            if(e.target.files && e.target.files[0]) {
+                document.getElementById('ai-quiz-file-name').textContent = e.target.files[0].name;
+            }
+        });
+        uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); uploadZone.style.borderColor = 'var(--primary-color)'; });
+        uploadZone.addEventListener('dragleave', (e) => { e.preventDefault(); uploadZone.style.borderColor = 'var(--border-color)'; });
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.style.borderColor = 'var(--border-color)';
+            if(e.dataTransfer.files && e.dataTransfer.files[0]) {
+                fileInput.files = e.dataTransfer.files;
+                document.getElementById('ai-quiz-file-name').textContent = e.dataTransfer.files[0].name;
+            }
+        });
+    }
+}
+
+function openAiConfigModal() {
+    document.getElementById('gemini-api-key-input').value = geminiApiKey;
+    document.getElementById('ai-config-modal').classList.add('active');
+}
+function closeAiConfigModal() {
+    document.getElementById('ai-config-modal').classList.remove('active');
+}
+function saveAiConfig() {
+    const key = document.getElementById('gemini-api-key-input').value.trim();
+    if(!key) {
+        alert('Vui lòng nhập API Key!');
+        return;
+    }
+    geminiApiKey = key;
+    localStorage.setItem('gemini_api_key', key);
+    alert('Đã lưu cấu hình AI thành công!');
+    closeAiConfigModal();
+}
+
+function openAiQuizModal() {
+    if(!geminiApiKey) {
+        openAiConfigModal();
+        return;
+    }
+    document.getElementById('ai-quiz-file-input').value = '';
+    document.getElementById('ai-quiz-file-name').textContent = '';
+    document.getElementById('ai-quiz-topic-input').value = '';
+    document.getElementById('ai-quiz-progress-state').style.display = 'none';
+    document.getElementById('btn-start-ai-gen').disabled = false;
+    document.getElementById('ai-quiz-modal').classList.add('active');
+}
+function closeAiQuizModal() {
+    document.getElementById('ai-quiz-modal').classList.remove('active');
+}
+
+async function startAiGeneration() {
+    const fileInput = document.getElementById('ai-quiz-file-input');
+    const topic = document.getElementById('ai-quiz-topic-input').value.trim();
+    
+    if(!fileInput.files || fileInput.files.length === 0) {
+        alert('Vui lòng chọn hoặc kéo thả 1 file tài liệu (PDF hoặc TXT) vào ô trống!');
+        return;
+    }
+    const file = fileInput.files[0];
+    const progressState = document.getElementById('ai-quiz-progress-state');
+    const progressText = document.getElementById('ai-quiz-progress-text');
+    const btnStart = document.getElementById('btn-start-ai-gen');
+    
+    progressState.style.display = 'block';
+    btnStart.disabled = true;
+    
+    try {
+        progressText.textContent = 'Đang đọc nội dung file...';
+        let extractedText = '';
+        
+        if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
+            extractedText = await extractTextFromPDF(file);
+        } else {
+            extractedText = await file.text();
+        }
+        
+        if(!extractedText || extractedText.trim().length < 50) {
+            throw new Error('Nội dung file quá ngắn hoặc không thể đọc được chữ (có thể PDF chỉ chứa ảnh).');
+        }
+
+        // Cut text to avoid token limits if it's too huge
+        const textToProcess = extractedText.substring(0, 20000);
+        
+        progressText.textContent = 'AI đang phân tích và tạo bài trắc nghiệm (sẽ mất khoảng 5-15 giây)...';
+        
+        const generatedQuiz = await callGeminiToGenerateQuiz(textToProcess, topic);
+        
+        if(generatedQuiz && generatedQuiz.length > 0) {
+            closeAiQuizModal();
+            renderTakeQuizModal(generatedQuiz);
+        } else {
+            throw new Error('AI không tạo được bài tập. Vui lòng thử lại!');
+        }
+        
+    } catch (err) {
+        console.error(err);
+        alert('Lỗi: ' + err.message);
+    } finally {
+        progressState.style.display = 'none';
+        btnStart.disabled = false;
+    }
+}
+
+async function extractTextFromPDF(file) {
+    if (typeof pdfjsLib === 'undefined') {
+        throw new Error('Thư viện PDF.js chưa được tải. Vui lòng kiểm tra kết nối mạng!');
+    }
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    let fullText = '';
+    
+    // Read up to 5 pages
+    const numPages = Math.min(pdf.numPages, 5);
+    for (let i = 1; i <= numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map(item => item.str).join(' ');
+        fullText += pageText + '\n';
+    }
+    return fullText;
+}
+
+async function callGeminiToGenerateQuiz(text, topic) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
+    
+    const prompt = `Bạn là một giáo viên chuyên nghiệp. Dựa vào nội dung tài liệu tôi cung cấp dưới đây, hãy tạo ra 5 đến 10 câu hỏi trắc nghiệm khách quan.
+${topic ? "YÊU CẦU THÊM TỪ HỌC SINH: " + topic : ""}
+Hãy trả về DUY NHẤT một mảng JSON (không có markdown \`\`\`json hoặc giải thích thêm) theo đúng cấu trúc sau:
+[
+  {
+    "question": "Nội dung câu hỏi 1",
+    "options": ["Đáp án A", "Đáp án B", "Đáp án C", "Đáp án D"],
+    "answer": 0,
+    "explanation": "Giải thích vì sao đáp án này đúng"
+  }
+]
+Chú ý: \`answer\` là index của mảng options (0, 1, 2, 3). Các câu trả lời phải là tiếng Việt nếu tài liệu tiếng Việt.
+
+TÀI LIỆU CỦA HỌC SINH:
+"""
+${text}
+"""
+    `.trim();
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+                temperature: 0.2
+            }
+        })
+    });
+    
+    if(!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error?.message || 'Lỗi kết nối Gemini API. Hãy kiểm tra lại API Key!');
+    }
+    
+    const data = await response.json();
+    let resText = data.candidates[0].content.parts[0].text;
+    
+    // Clean up markdown block if any
+    resText = resText.replace(/^\s*```json/i, '').replace(/```\s*$/, '').trim();
+    
+    try {
+        return JSON.parse(resText);
+    } catch (e) {
+        throw new Error("AI trả về kết quả không đúng định dạng. Vui lòng thử lại!");
+    }
+}
+
+function renderTakeQuizModal(quizArray) {
+    currentQuizData = quizArray;
+    const container = document.getElementById('quiz-questions-container');
+    container.innerHTML = '';
+    
+    quizArray.forEach((q, idx) => {
+        const qCard = document.createElement('div');
+        qCard.className = 'quiz-question-card';
+        qCard.innerHTML = `
+            <div class="quiz-question-title">Câu ${idx + 1}: ${q.question}</div>
+            <div class="quiz-options-list" id="q-opts-${idx}">
+                ${q.options.map((opt, optIdx) => `
+                    <div class="quiz-option" data-q="${idx}" data-opt="${optIdx}" onclick="selectQuizOption(this, ${idx}, ${optIdx})">
+                        ${String.fromCharCode(65 + optIdx)}. ${opt}
+                    </div>
+                `).join('')}
+            </div>
+            <div id="q-feedback-${idx}" style="display:none; margin-top:15px; font-size:0.9rem; padding:10px; border-radius:5px; background:var(--bg-color); border-left: 3px solid var(--primary-color);">
+                <strong><i class="fa-solid fa-lightbulb" style="color:var(--warning-color)"></i> Giải thích:</strong> ${q.explanation || 'Không có giải thích.'}
+            </div>
+        `;
+        container.appendChild(qCard);
+    });
+    
+    document.getElementById('quiz-result-display').style.display = 'none';
+    document.getElementById('btn-submit-quiz').style.display = 'inline-flex';
+    document.getElementById('take-quiz-modal').classList.add('active');
+}
+
+function selectQuizOption(el, qIdx, optIdx) {
+    // Nếu đã nộp bài thì chặn click
+    if(document.getElementById('quiz-result-display').style.display === 'block') return;
+    
+    const siblings = document.querySelectorAll(`#q-opts-${qIdx} .quiz-option`);
+    siblings.forEach(s => s.classList.remove('selected'));
+    el.classList.add('selected');
+    currentQuizData[qIdx].userAnswer = optIdx;
+}
+
+function submitQuiz() {
+    let unanswered = 0;
+    currentQuizData.forEach(q => {
+        if(q.userAnswer === undefined) unanswered++;
+    });
+    
+    if(unanswered > 0) {
+        if(!confirm(`Bạn còn ${unanswered} câu chưa trả lời. Bạn có chắc chắn muốn nộp bài?`)) return;
+    }
+    
+    let score = 0;
+    currentQuizData.forEach((q, idx) => {
+        const userAns = q.userAnswer;
+        const correctAns = q.answer;
+        const siblings = document.querySelectorAll(`#q-opts-${idx} .quiz-option`);
+        
+        siblings.forEach(s => {
+            s.style.pointerEvents = 'none'; 
+        });
+        
+        if(userAns !== undefined) {
+            const userEl = document.querySelector(`#q-opts-${idx} .quiz-option[data-opt="${userAns}"]`);
+            if(userAns === correctAns) {
+                score++;
+                userEl.classList.add('correct');
+            } else {
+                userEl.classList.add('incorrect');
+                const correctEl = document.querySelector(`#q-opts-${idx} .quiz-option[data-opt="${correctAns}"]`);
+                if(correctEl) correctEl.classList.add('correct');
+            }
+        } else {
+            const correctEl = document.querySelector(`#q-opts-${idx} .quiz-option[data-opt="${correctAns}"]`);
+            if(correctEl) correctEl.classList.add('correct');
+        }
+        
+        document.getElementById(`q-feedback-${idx}`).style.display = 'block';
+    });
+    
+    const resultBox = document.getElementById('quiz-result-display');
+    document.getElementById('quiz-score-text').textContent = `${score}/${currentQuizData.length}`;
+    
+    let feedback = '';
+    const ratio = score / currentQuizData.length;
+    if(ratio === 1) feedback = 'Tuyệt cú mèo! Bạn đã trả lời đúng tất cả.';
+    else if(ratio >= 0.7) feedback = 'Khá lắm! Bạn hiểu bài rất tốt.';
+    else if(ratio >= 0.5) feedback = 'Đạt yêu cầu! Nhưng cần ôn tập thêm nhé.';
+    else feedback = 'Cố gắng lên! Hãy đọc kỹ tài liệu lại một lần nữa.';
+    
+    document.getElementById('quiz-feedback-text').textContent = feedback;
+    resultBox.style.display = 'block';
+    
+    document.getElementById('btn-submit-quiz').style.display = 'none';
+}
+
+function closeTakeQuizModal() {
+    document.getElementById('take-quiz-modal').classList.remove('active');
+}

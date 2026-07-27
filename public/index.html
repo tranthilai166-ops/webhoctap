@@ -68,11 +68,6 @@
                     <span>Bài Tập & Luyện Tập</span>
                     <span class="badge" id="pending-exercise-count-badge" style="display:none">0</span>
                 </button>
-                <button class="nav-item" data-tab="chat" onclick="switchTab('chat')">
-                    <i class="fa-solid fa-comments"></i>
-                    <span>Trò Chuyện & Bạn Học</span>
-                    <span class="badge" id="unread-chat-count-badge" style="display:none">0</span>
-                </button>
             </nav>
 
             <!-- Streak Card Widget & Check-in Button -->
@@ -408,9 +403,14 @@
                                 <h3><i class="fa-solid fa-pen-to-square"></i> Danh Sách Bài Tập</h3>
                                 <span class="task-counter" id="exercise-summary-counter">Hiển thị 0 bài tập</span>
                             </div>
-                            <button class="btn btn-primary btn-sm" id="btn-add-exercise-modal">
-                                <i class="fa-solid fa-plus"></i> Thêm Bài Tập
-                            </button>
+                            <div class="header-right-actions" style="display:flex; gap:8px;">
+                                <button class="btn btn-outline btn-sm" id="btn-open-ai-quiz-modal" style="color: var(--primary-color); border-color: var(--primary-color);">
+                                    <i class="fa-solid fa-wand-magic-sparkles"></i> Tạo Quiz Bằng AI
+                                </button>
+                                <button class="btn btn-primary btn-sm" id="btn-add-exercise-modal">
+                                    <i class="fa-solid fa-plus"></i> Thêm Bài Tập
+                                </button>
+                            </div>
                         </div>
                         <div class="card-body">
                             <div class="task-list-container" id="full-exercises-list">
@@ -421,104 +421,6 @@
                 </div>
             </section>
 
-            <!-- TAB 5: FRIENDS & DIRECT MESSAGING (CHAT) -->
-            <section class="tab-content" id="tab-chat">
-                <div class="chat-tab-container">
-                    <!-- Left Column: Add Friend by User ID & Friend Requests -->
-                    <div class="chat-sidebar-pane">
-                        <div class="card mb-3">
-                            <div class="card-header">
-                                <h3><i class="fa-solid fa-user-plus"></i> Kết Bạn Qua User ID</h3>
-                            </div>
-                            <div class="card-body">
-                                <form id="add-friend-form" class="add-friend-input-group">
-                                    <input type="text" id="search-friend-userid" required placeholder="Nhập User ID (ví dụ: tri2026)">
-                                    <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-magnifying-glass"></i> Tìm & Kết Bạn</button>
-                                </form>
-                                <div id="add-friend-result-msg" class="mt-2 text-sm"></div>
-                            </div>
-                        </div>
-
-                        <!-- Friend Requests List -->
-                        <div class="card mb-3" id="friend-requests-card" style="display:none">
-                            <div class="card-header">
-                                <h3><i class="fa-solid fa-clock-rotate-left"></i> Lời Mời Kết Bạn</h3>
-                            </div>
-                            <div class="card-body p-0">
-                                <div class="friend-requests-list" id="friend-requests-list">
-                                    <!-- Requests -->
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Groups List for Chat -->
-                        <div class="card mb-3">
-                            <div class="card-header d-flex justify-content-between align-items-center">
-                                <h3><i class="fa-solid fa-people-group"></i> Nhóm Học Tập</h3>
-                                <button type="button" class="btn btn-primary btn-xs" id="btn-open-create-group-modal" onclick="openCreateGroupModal()">
-                                    <i class="fa-solid fa-plus"></i> Tạo Nhóm
-                                </button>
-                            </div>
-                            <div class="card-body p-0">
-                                <div class="friends-list" id="chat-groups-list">
-                                    <!-- Groups -->
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Friends List for Chat -->
-                        <div class="card flex-grow-1">
-                            <div class="card-header">
-                                <h3><i class="fa-solid fa-users"></i> Danh Sách Bạn Học</h3>
-                            </div>
-                            <div class="card-body p-0">
-                                <div class="friends-list" id="chat-friends-list">
-                                    <!-- Friends -->
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Right Column: Direct Message Chat Window -->
-                    <div class="chat-main-pane">
-                        <div class="card chat-window-card" id="chat-window-card">
-                            <div class="card-header chat-header" id="chat-active-header">
-                                <div class="chat-user-left">
-                                    <div class="user-avatar-circle" id="chat-active-avatar">?</div>
-                                    <div>
-                                        <h3 id="chat-active-name">Chọn một bạn học để trò chuyện</h3>
-                                        <span class="user-id-badge" id="chat-active-id">@userid</span>
-                                    </div>
-                                </div>
-                                <div class="chat-header-actions">
-                                    <button class="btn-call-action" id="btn-audio-call" title="Gọi thoại" style="display:none">
-                                        <i class="fa-solid fa-phone"></i>
-                                    </button>
-                                    <button class="btn-call-action btn-video-call" id="btn-video-call" title="Gọi video" style="display:none">
-                                        <i class="fa-solid fa-video"></i>
-                                    </button>
-                                    <span class="badge-tag badge-info badge-auto-delete"><i class="fa-solid fa-shield-halved"></i> Xóa sau 7 ngày</span>
-                                </div>
-                            </div>
-
-                            <div class="card-body chat-messages-body" id="chat-messages-container">
-                                <div class="empty-state" id="chat-empty-state">
-                                    <i class="fa-solid fa-comments"></i>
-                                    <p>Chọn một người bạn từ danh sách bên trái để bắt đầu nhắn tin trò chuyện học tập!</p>
-                                </div>
-                                <!-- Chat bubbles render here -->
-                            </div>
-
-                            <div class="card-footer chat-input-footer" id="chat-input-area" style="display:none">
-                                <form id="chat-send-form">
-                                    <input type="text" id="chat-message-input" autocomplete="off" placeholder="Nhập tin nhắn trò chuyện...">
-                                    <button type="submit" class="btn btn-primary"><i class="fa-solid fa-paper-plane"></i> Gửi</button>
-                                </form>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </section>
         </main>
     </div>
 
@@ -793,109 +695,87 @@
         </div>
     </div>
 
-    <!-- MODAL: CUỘC GỌI ĐẾN (INCOMING CALL) -->
-    <div class="incoming-call-overlay" id="incoming-call-modal">
-        <div class="incoming-call-card">
-            <div class="incoming-call-pulse"></div>
-            <div class="incoming-call-avatar" id="incoming-call-avatar">?</div>
-            <h2 class="incoming-call-name" id="incoming-call-name">Bạn Học</h2>
-            <p class="incoming-call-type" id="incoming-call-type">
-                <i class="fa-solid fa-video"></i> Cuộc gọi video đến...
-            </p>
-            <div class="incoming-call-actions">
-                <button class="call-action-btn reject-call" id="btn-reject-call" title="Từ chối">
-                    <i class="fa-solid fa-phone-slash"></i>
-                    <span>Từ chối</span>
-                </button>
-                <button class="call-action-btn accept-call" id="btn-accept-call" title="Chấp nhận">
-                    <i class="fa-solid fa-phone"></i>
-                    <span>Chấp nhận</span>
-                </button>
-            </div>
-        </div>
-    </div>
 
-    <!-- OVERLAY: MÀN HÌNH CUỘC GỌI TOÀN MÀN HÌNH -->
-    <div class="call-screen-overlay" id="call-screen-overlay">
-        <!-- Video từ xa (bạn bè) -->
-        <video class="remote-video" id="remote-video" autoplay playsinline></video>
-        
-        <!-- Khi chưa bật cam remote: hiển thị avatar -->
-        <div class="remote-video-off" id="remote-video-off">
-            <div class="call-avatar-large" id="call-remote-avatar">?</div>
-            <p id="call-remote-name-display">Bạn Học</p>
-        </div>
 
-        <!-- Video bản thân (picture-in-picture nhỏ ở góc) - Bấm vào để đổi góc nhìn -->
-        <div class="local-video-pip" id="local-video-pip" title="Bấm để đổi góc nhìn lớn/nhỏ">
-            <video class="local-video" id="local-video" autoplay playsinline muted></video>
-            <div class="local-video-off" id="local-video-off">
-                <i class="fa-solid fa-video-slash"></i>
-                <span>Cam tắt</span>
-            </div>
-            <div class="pip-swap-hint"><i class="fa-solid fa-arrows-rotate"></i> Chuyển góc</div>
-        </div>
-
-        <!-- Header cuộc gọi -->
-        <div class="call-top-bar">
-            <div class="call-info">
-                <div class="call-status-dot"></div>
-                <span class="call-partner-name" id="call-partner-name">Bạn Học</span>
-            </div>
-            <div class="call-timer" id="call-timer">00:00</div>
-        </div>
-
-        <!-- Trạng thái đang kết nối -->
-        <div class="call-connecting-state" id="call-connecting-state">
-            <div class="connecting-spinner"></div>
-            <p id="call-connecting-text">Đang kết nối...</p>
-        </div>
-
-        <!-- Thanh điều khiển cuộc gọi -->
-        <div class="call-controls-bar">
-            <button class="call-ctrl-btn" id="btn-toggle-mic" title="Bật/Tắt Microphone">
-                <i class="fa-solid fa-microphone"></i>
-            </button>
-            <button class="call-ctrl-btn" id="btn-toggle-camera" title="Bật/Tắt Camera">
-                <i class="fa-solid fa-video"></i>
-            </button>
-            <button class="call-ctrl-btn" id="btn-swap-view" title="Đổi màn hình lớn / nhỏ">
-                <i class="fa-solid fa-arrows-rotate"></i>
-            </button>
-            <button class="call-ctrl-btn" id="btn-toggle-layout" title="Chia đôi màn hình 50/50 (Messenger style)">
-                <i class="fa-solid fa-grip-vertical"></i>
-            </button>
-            <button class="call-ctrl-btn end-call-btn" id="btn-end-call" title="Kết thúc cuộc gọi">
-                <i class="fa-solid fa-phone-slash"></i>
-            </button>
-        </div>
-    </div>
-
-    <!-- MODAL: TẠO NHÓM HỌC TẬP -->
-    <div class="modal-overlay" id="create-group-modal">
+    <!-- MODAL: CẤU HÌNH AI (GEMINI API KEY) -->
+    <div class="modal-overlay" id="ai-config-modal">
         <div class="modal-card">
             <div class="modal-header">
-                <h2><i class="fa-solid fa-users-rectangle"></i> Tạo Nhóm Học Tập Mới</h2>
-                <button class="modal-close-btn" id="btn-close-create-group-modal">&times;</button>
+                <h2><i class="fa-solid fa-gear"></i> Cấu Hình AI (Gemini)</h2>
+                <button class="modal-close-btn" id="btn-close-ai-config-modal">&times;</button>
             </div>
-            <form id="create-group-form">
+            <div class="modal-body">
+                <p style="font-size: 0.9rem; margin-bottom: 15px; line-height: 1.5; color: var(--text-secondary);">
+                    Để sử dụng tính năng tạo Bài Tập tự động, bạn cần cung cấp <strong>Google Gemini API Key</strong>. Key này hoàn toàn miễn phí và chỉ lưu trữ cục bộ trên máy của bạn.
+                </p>
                 <div class="form-group">
-                    <label for="group-name-input">Tên Nhóm Học Tập</label>
-                    <input type="text" id="group-name-input" required placeholder="Ví dụ: Nhóm Ôn Thi Toán 12, Team Cùng Học...">
+                    <label for="gemini-api-key-input">Gemini API Key <span class="text-danger">*</span></label>
+                    <input type="password" id="gemini-api-key-input" placeholder="Nhập API Key bắt đầu bằng AIzaSy...">
+                    <small style="display:block; margin-top:5px;"><a href="https://aistudio.google.com/app/apikey" target="_blank" style="color: var(--primary-color);">Lấy API Key tại đây</a></small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" id="btn-cancel-ai-config">Hủy</button>
+                <button type="button" class="btn btn-primary" id="btn-save-ai-config"><i class="fa-solid fa-floppy-disk"></i> Lưu Cấu Hình</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: TẠO QUIZ BẰNG AI -->
+    <div class="modal-overlay" id="ai-quiz-modal">
+        <div class="modal-card" style="max-width: 600px;">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-wand-magic-sparkles"></i> Tạo Bài Tập Trắc Nghiệm</h2>
+                <button class="modal-close-btn" id="btn-close-ai-quiz-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="ai-quiz-upload-zone" id="ai-quiz-upload-zone" style="border: 2px dashed var(--border-color); border-radius: 8px; padding: 30px; text-align: center; cursor: pointer; margin-bottom: 15px; transition: border-color 0.2s;">
+                    <i class="fa-solid fa-file-pdf" style="font-size: 40px; color: var(--primary-color); margin-bottom: 10px;"></i>
+                    <p>Kéo thả file PDF/TXT vào đây hoặc <strong>Click để chọn file</strong></p>
+                    <p id="ai-quiz-file-name" style="margin-top: 10px; font-weight: 600; color: var(--primary-color);"></p>
+                    <small style="color: var(--text-secondary);">Hệ thống sẽ quét nội dung và tự tạo 5-10 câu trắc nghiệm</small>
+                    <input type="file" id="ai-quiz-file-input" accept=".pdf,.txt" style="display: none;">
+                </div>
+                
+                <div class="form-group">
+                    <label for="ai-quiz-topic-input">Gợi ý thêm cho AI (Tùy chọn)</label>
+                    <input type="text" id="ai-quiz-topic-input" placeholder="Ví dụ: Tập trung vào chương 2, hoặc mức độ khó...">
                 </div>
 
-                <div class="form-group">
-                    <label>Chọn Thành Viên (Từ danh sách bạn học)</label>
-                    <div class="group-members-select-list" id="group-members-select-list">
-                        <!-- Members Checklist -->
-                    </div>
+                <!-- Progress State -->
+                <div id="ai-quiz-progress-state" style="display: none; text-align: center; padding: 20px 0;">
+                    <div class="connecting-spinner" style="border-top-color: var(--primary-color); margin: 0 auto 15px; display: block;"></div>
+                    <p id="ai-quiz-progress-text" style="font-weight: 500;">Đang xử lý...</p>
                 </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" id="btn-cancel-ai-quiz">Hủy</button>
+                <button type="button" class="btn btn-outline" id="btn-open-ai-config" style="margin-right: auto;" title="Cấu hình API Key"><i class="fa-solid fa-gear"></i> API Key</button>
+                <button type="button" class="btn btn-primary" id="btn-start-ai-gen"><i class="fa-solid fa-robot"></i> Bắt Đầu Tạo</button>
+            </div>
+        </div>
+    </div>
 
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-outline" id="btn-cancel-create-group">Hủy</button>
-                    <button type="submit" class="btn btn-primary"><i class="fa-solid fa-plus"></i> Tạo Nhóm Ngay</button>
+    <!-- MODAL: LÀM BÀI TRẮC NGHIỆM -->
+    <div class="modal-overlay" id="take-quiz-modal">
+        <div class="modal-card" style="max-width: 800px; width: 90%; max-height: 90vh; display: flex; flex-direction: column;">
+            <div class="modal-header">
+                <h2 id="take-quiz-title"><i class="fa-solid fa-list-check"></i> Làm Bài Kiểm Tra</h2>
+                <button class="modal-close-btn" id="btn-close-take-quiz-modal">&times;</button>
+            </div>
+            <div class="modal-body" style="overflow-y: auto; flex-grow: 1; padding: 20px;">
+                <div id="quiz-questions-container">
+                    <!-- Quiz rendering here -->
                 </div>
-            </form>
+                <div id="quiz-result-display" style="display: none; text-align: center; margin-top: 20px; padding: 15px; border-radius: 8px; background: rgba(99, 102, 241, 0.1);">
+                    <h3 style="color: var(--primary-color); font-size: 1.5rem; margin-bottom: 5px;">Kết Quả: <span id="quiz-score-text">0/0</span></h3>
+                    <p id="quiz-feedback-text">Làm tốt lắm!</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" id="btn-cancel-take-quiz">Đóng</button>
+                <button type="button" class="btn btn-primary" id="btn-submit-quiz"><i class="fa-solid fa-check-double"></i> Nộp Bài</button>
+            </div>
         </div>
     </div>
 
