@@ -3489,7 +3489,7 @@ async function startAiGeneration() {
                 id: 'ex-' + Date.now(),
                 title: 'Trắc nghiệm AI: ' + (file.name || 'Tài liệu mới'),
                 subjectId: state.subjects[0]?.id || '', // Default to first subject
-                dueDate: '',
+                dueDate: new Date().toISOString().split('T')[0],
                 desc: topic || 'Bài tập tạo tự động từ tài liệu.',
                 completed: false,
                 isQuiz: true,
