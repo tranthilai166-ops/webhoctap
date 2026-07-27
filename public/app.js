@@ -3615,8 +3615,11 @@ ${text}
         } catch (err) {
             lastError = err;
             const msg = err.message.toLowerCase();
-            // Bỏ qua model nếu bị các lỗi liên quan đến deprecation hoặc unsupported
-            if (msg.includes('not found') || msg.includes('not supported') || msg.includes('no longer available') || msg.includes('deprecated') || msg.includes('unavailable')) {
+            // Bỏ qua model nếu bị các lỗi liên quan đến deprecation, unsupported, hoặc quota/limit (đặc biệt là limit: 0)
+            if (msg.includes('not found') || msg.includes('not supported') || 
+                msg.includes('no longer available') || msg.includes('deprecated') || 
+                msg.includes('unavailable') || msg.includes('quota') || 
+                msg.includes('exceeded') || msg.includes('limit')) {
                 console.warn(`Model ${modelName} bị từ chối (${err.message}), đang thử model khác...`);
                 continue;
             } else {
@@ -3626,7 +3629,7 @@ ${text}
         }
     }
     
-    throw new Error(`Đã thử tất cả các mô hình AI nhưng không thành công. Lỗi cuối cùng: ${lastError?.message}`);
+    throw new Error(`Tất cả các mô hình AI đều bị từ chối (có thể do API Key hết hạn mức hoặc chưa hỗ trợ khu vực này). Lỗi cuối: ${lastError?.message}`);
 }
 
 function renderTakeQuizModal(quizArray) {
