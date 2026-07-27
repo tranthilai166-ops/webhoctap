@@ -3513,9 +3513,14 @@ async function extractTextFromPDF(file) {
 }
 
 async function callGeminiToGenerateQuiz(text, topic) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
-    
-    const prompt = `Bạn là một hệ thống bóc tách và tạo bài tập trắc nghiệm thông minh. Dựa vào nội dung tài liệu tôi cung cấp dưới đây, hãy tạo ra danh sách các câu hỏi trắc nghiệm khách quan (tối đa 30 câu).
+    let modelsToTry = ['gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-pro'];
+    let lastError = null;
+
+    for (let model of modelsToTry) {
+        try {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
+            
+            const prompt = `Bạn là một hệ thống bóc tách và tạo bài tập trắc nghiệm thông minh. Dựa vào nội dung tài liệu tôi cung cấp dưới đây, hãy tạo ra danh sách các câu hỏi trắc nghiệm khách quan (tối đa 30 câu).
 ${topic ? "YÊU CẦU THÊM TỪ HỌC SINH: " + topic : ""}
 CHỈ DẪN QUAN TRỌNG:
 - Nếu tài liệu cung cấp đã có sẵn các câu hỏi trắc nghiệm, hãy bóc tách CHÍNH XÁC các câu hỏi và các lựa chọn (A, B, C, D) đó.
@@ -3538,35 +3543,46 @@ TÀI LIỆU CỦA HỌC SINH:
 """
 ${text}
 """
-    `.trim();
+            `.trim();
 
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-                temperature: 0.2
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: {
+                        temperature: 0.2
+                    }
+                })
+            });
+            
+            if(!response.ok) {
+                const err = await response.json();
+                throw new Error(err.error?.message || 'Lỗi kết nối Gemini API. Hãy kiểm tra lại API Key!');
             }
-        })
-    });
-    
-    if(!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error?.message || 'Lỗi kết nối Gemini API. Hãy kiểm tra lại API Key!');
+            
+            const data = await response.json();
+            let resText = data.candidates[0].content.parts[0].text;
+            
+            // Clean up markdown block if any
+            resText = resText.replace(/^\s*```json/i, '').replace(/```\s*$/, '').trim();
+            
+            try {
+                return JSON.parse(resText);
+            } catch (e) {
+                throw new Error("AI trả về kết quả không đúng định dạng. Vui lòng thử lại!");
+            }
+        } catch (err) {
+            lastError = err;
+            if (err.message.includes('not found') || err.message.includes('not supported')) {
+                console.warn(`Model ${model} failed, trying next...`);
+                continue;
+            } else {
+                throw err;
+            }
+        }
     }
-    
-    const data = await response.json();
-    let resText = data.candidates[0].content.parts[0].text;
-    
-    // Clean up markdown block if any
-    resText = resText.replace(/^\s*```json/i, '').replace(/```\s*$/, '').trim();
-    
-    try {
-        return JSON.parse(resText);
-    } catch (e) {
-        throw new Error("AI trả về kết quả không đúng định dạng. Vui lòng thử lại!");
-    }
+    throw lastError;
 }
 
 function renderTakeQuizModal(quizArray) {
