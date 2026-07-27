@@ -3338,6 +3338,7 @@ function renderExercises() {
                 </div>
             </div>
             <div class="task-actions">
+                ${ex.isQuiz ? `<button class="btn btn-primary" style="padding: 5px 12px; font-size: 0.85rem; border-radius: 6px; margin-right: 5px;" onclick="openQuizExercise('${ex.id}')"><i class="fa-solid fa-play"></i> Làm bài</button>` : ''}
                 <button class="icon-btn edit" onclick='openExerciseModal(${JSON.stringify(ex).replace(/'/g, "&#39;")})' title="Sửa"><i class="fa-solid fa-pen"></i></button>
                 <button class="icon-btn danger" onclick="deleteExercise('${ex.id}')" title="Xóa"><i class="fa-solid fa-trash"></i></button>
             </div>
@@ -3352,6 +3353,7 @@ function renderExercises() {
 
 let geminiApiKey = localStorage.getItem('gemini_api_key') || '';
 let currentQuizData = [];
+let currentQuizExerciseId = null;
 
 function initAiQuizSystem() {
     const btnOpenConfig = document.getElementById('btn-open-ai-config');
@@ -3370,6 +3372,7 @@ function initAiQuizSystem() {
     const btnCloseTake = document.getElementById('btn-close-take-quiz-modal');
     const btnCancelTake = document.getElementById('btn-cancel-take-quiz');
     const btnSubmitQuiz = document.getElementById('btn-submit-quiz');
+    const btnRetakeQuiz = document.getElementById('btn-retake-quiz');
 
     if(btnOpenConfig) btnOpenConfig.addEventListener('click', openAiConfigModal);
     if(btnSaveConfig) btnSaveConfig.addEventListener('click', saveAiConfig);
@@ -3384,6 +3387,7 @@ function initAiQuizSystem() {
     if(btnCloseTake) btnCloseTake.addEventListener('click', closeTakeQuizModal);
     if(btnCancelTake) btnCancelTake.addEventListener('click', closeTakeQuizModal);
     if(btnSubmitQuiz) btnSubmitQuiz.addEventListener('click', submitQuiz);
+    if(btnRetakeQuiz) btnRetakeQuiz.addEventListener('click', retakeQuiz);
 
     if(uploadZone && fileInput) {
         uploadZone.addEventListener('click', () => fileInput.click());
@@ -3479,7 +3483,27 @@ async function startAiGeneration() {
         
         if(generatedQuiz && generatedQuiz.length > 0) {
             closeAiQuizModal();
-            renderTakeQuizModal(generatedQuiz);
+            
+            if (!state.exercises) state.exercises = [];
+            const quizEx = {
+                id: 'ex-' + Date.now(),
+                title: 'Trắc nghiệm AI: ' + (file.name || 'Tài liệu mới'),
+                subjectId: state.subjects[0]?.id || '', // Default to first subject
+                dueDate: '',
+                desc: topic || 'Bài tập tạo tự động từ tài liệu.',
+                completed: false,
+                isQuiz: true,
+                quizData: generatedQuiz
+            };
+            state.exercises.push(quizEx);
+            saveUserData();
+            renderExercises();
+            
+            alert('Tạo bài tập thành công! Bài kiểm tra đã được lưu vào danh sách Bài Tập của bạn.');
+            
+            // Switch to Exercises tab if function exists
+            if(typeof switchTab === 'function') switchTab('exercises');
+            
         } else {
             throw new Error('AI không tạo được bài tập. Vui lòng thử lại!');
         }
@@ -3632,6 +3656,25 @@ ${text}
     throw new Error(`Tất cả các mô hình AI đều bị từ chối (có thể do API Key hết hạn mức hoặc chưa hỗ trợ khu vực này). Lỗi cuối: ${lastError?.message}`);
 }
 
+window.openQuizExercise = function(id) {
+    const ex = state.exercises.find(e => e.id === id);
+    if (!ex || !ex.quizData) return;
+    
+    currentQuizExerciseId = id;
+    
+    // Xóa đáp án cũ nếu có để tránh lỗi hiển thị khi mở lại chưa nộp bài
+    ex.quizData.forEach(q => delete q.userAnswer);
+    
+    renderTakeQuizModal(ex.quizData);
+};
+
+window.retakeQuiz = function() {
+    if (currentQuizData) {
+        currentQuizData.forEach(q => delete q.userAnswer);
+        renderTakeQuizModal(currentQuizData);
+    }
+};
+
 function renderTakeQuizModal(quizArray) {
     currentQuizData = quizArray;
     const container = document.getElementById('quiz-questions-container');
@@ -3723,6 +3766,15 @@ function submitQuiz() {
     resultBox.style.display = 'block';
     
     document.getElementById('btn-submit-quiz').style.display = 'none';
+    
+    if (currentQuizExerciseId) {
+        const ex = state.exercises.find(e => e.id === currentQuizExerciseId);
+        if (ex) {
+            ex.completed = true;
+            saveUserData();
+            renderExercises();
+        }
+    }
 }
 
 function closeTakeQuizModal() {
