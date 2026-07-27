@@ -70,6 +70,11 @@
                     <span>Bài Tập & Luyện Tập</span>
                     <span class="badge" id="pending-exercise-count-badge" style="display:none">0</span>
                 </button>
+                <button class="nav-item" data-tab="vocabulary" onclick="switchTab('vocabulary')">
+                    <i class="fa-solid fa-language"></i>
+                    <span>Học Từ Vựng</span>
+                    <span class="badge" id="due-vocab-count-badge" style="display:none; background: var(--danger-color)">0</span>
+                </button>
 
             </nav>
 
@@ -431,6 +436,36 @@
                 </div>
             </section>
 
+            <!-- TAB VOCABULARY: HỌC TỪ VỰNG -->
+            <section class="tab-content" id="tab-vocabulary">
+                <div class="task-page-header">
+                    <div class="task-filters-bar flex-between" style="justify-content: space-between; align-items: center;">
+                        <div class="header-left-info" style="display: flex; flex-direction: column;">
+                            <h3 style="margin: 0; display: flex; align-items: center; gap: 8px;"><i class="fa-solid fa-graduation-cap" style="color: var(--primary-color)"></i> Hệ Thống Spaced Repetition</h3>
+                            <span style="font-size: 0.9rem; color: var(--text-secondary); margin-top: 4px;" id="vocab-stats-info">Đang tải dữ liệu...</span>
+                        </div>
+                        <div class="header-right-actions" style="display:flex; gap:8px;">
+                            <button class="btn btn-outline btn-sm" id="btn-open-import-vocab-modal" style="color: var(--primary-color); border-color: var(--primary-color);">
+                                <i class="fa-solid fa-cloud-arrow-up"></i> Quét & Thêm File
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tasks-main-wrapper">
+                    <!-- Danh sách chủ đề từ vựng -->
+                    <div class="card full-task-card" style="height: 100%;">
+                        <div class="card-header" style="border-bottom: 2px solid var(--primary-color);">
+                            <h3><i class="fa-solid fa-layer-group"></i> Chọn chủ đề để học</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="vocab-topics-grid" id="vocab-topics-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin-top: 10px;">
+                                <!-- Các chủ đề render tại đây -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
             
         </main>
     </div>
@@ -849,6 +884,74 @@ fa-check-double"></i> Nộp Bài</button>
             </form>
         </div>
     </div>
+
+    <!-- MODAL: UPLOAD VOCAB FILE -->
+    <div class="modal-overlay" id="import-vocab-modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3 id="import-vocab-modal-title"><i class="fa-solid fa-cloud-arrow-up"></i> Nhập Từ Vựng Từ File</h3>
+                <button class="icon-btn" id="btn-close-import-vocab-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 15px;">Hệ thống AI sẽ tự động phân tích và bóc tách từ vựng từ PDF hoặc hình ảnh bạn tải lên.</p>
+                <div class="form-group">
+                    <label>Tải lên File (PDF, Hình ảnh):</label>
+                    <div class="upload-zone" id="vocab-upload-zone" style="border: 2px dashed var(--border-color); border-radius: 8px; padding: 30px; text-align: center; cursor: pointer; transition: all 0.3s ease;">
+                        <i class="fa-solid fa-cloud-arrow-up" style="font-size: 2rem; color: var(--text-secondary); margin-bottom: 10px;"></i>
+                        <p>Kéo thả hoặc click để chọn file</p>
+                        <span id="vocab-file-name" style="display: block; margin-top: 10px; font-weight: bold; color: var(--primary-color);"></span>
+                        <input type="file" id="vocab-file-input" style="display: none;" accept=".pdf,image/*">
+                    </div>
+                </div>
+                <div id="vocab-progress-state" style="display: none; text-align: center; margin-top: 15px;">
+                    <i class="fa-solid fa-spinner fa-spin" style="font-size: 1.5rem; color: var(--primary-color); margin-bottom: 10px;"></i>
+                    <p id="vocab-progress-text" style="font-weight: 500;">Đang xử lý...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" id="btn-cancel-import-vocab">Hủy</button>
+                <button class="btn btn-primary" id="btn-start-import-vocab"><i class="fa-solid fa-wand-magic-sparkles"></i> Bắt đầu quét</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: FLASHCARD LEARNING -->
+    <div class="modal-overlay" id="flashcard-modal">
+        <div class="modal-content" style="max-width: 600px; background: transparent; box-shadow: none; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+            <div style="width: 100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; background: var(--bg-color); padding: 15px; border-radius: 12px;">
+                <h3 id="flashcard-topic-title" style="margin: 0;"><i class="fa-solid fa-graduation-cap"></i> Đang học...</h3>
+                <button class="icon-btn" id="btn-close-flashcard-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            
+            <div class="flashcard-container" style="width: 100%; height: 350px; perspective: 1000px; cursor: pointer;" onclick="toggleFlashcardFlip()">
+                <div class="flashcard-inner" id="flashcard-card-element" style="position: relative; width: 100%; height: 100%; text-align: center; transition: transform 0.6s; transform-style: preserve-3d; border-radius: 16px;">
+                    <!-- Mặt trước (Tiếng Anh) -->
+                    <div class="flashcard-front" style="position: absolute; width: 100%; height: 100%; backface-visibility: hidden; background: var(--bg-color); border-radius: 16px; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; box-shadow: var(--card-shadow); border: 2px solid var(--border-color);">
+                        <h2 id="fc-word" style="font-size: 2.5rem; margin-bottom: 15px; color: var(--primary-color);">word</h2>
+                        <p style="font-size: 0.9rem; color: var(--text-secondary);"><i class="fa-solid fa-hand-pointer"></i> Bấm để lật thẻ</p>
+                    </div>
+                    <!-- Mặt sau (Tiếng Việt) -->
+                    <div class="flashcard-back" style="position: absolute; width: 100%; height: 100%; backface-visibility: hidden; background: var(--primary-color); color: white; border-radius: 16px; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; box-shadow: var(--card-shadow); transform: rotateY(180deg);">
+                        <h2 id="fc-meaning" style="font-size: 2rem; margin-bottom: 10px;">nghĩa của từ</h2>
+                        <p id="fc-example" style="font-size: 1rem; font-style: italic; opacity: 0.9; margin-bottom: 20px;">Ví dụ...</p>
+                        <div class="flashcard-actions" style="display: flex; gap: 15px; margin-top: auto;" onclick="event.stopPropagation()">
+                            <button class="btn btn-danger" id="btn-fc-forget" style="background: rgba(255,255,255,0.2); color: white; border: 1px solid white;"><i class="fa-solid fa-xmark"></i> Quên (Học Lại)</button>
+                            <button class="btn btn-success" id="btn-fc-remember" style="background: white; color: var(--primary-color); border: none;"><i class="fa-solid fa-check"></i> Đã Nhớ (Ôn Sau)</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="margin-top: 20px; background: var(--bg-color); padding: 10px 20px; border-radius: 20px; font-weight: bold;" id="flashcard-progress-text">
+                Từ 1 / 10
+            </div>
+        </div>
+    </div>
+    <style>
+        .flashcard-inner.flipped {
+            transform: rotateY(180deg);
+        }
+    </style>
 
     <script src="app.js"></script>
 </body>

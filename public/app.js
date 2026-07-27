@@ -160,7 +160,8 @@ let state = {
     currentPeriod: 'week',
     activeChatFriendId: null,
     activeGroupId: null,
-    exercises: []
+    exercises: [],
+    vocabulary: []
 };
 
 // Live Study Session Overlay State
@@ -226,6 +227,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initLiveStudyModal();
     initMailbox();
     initAuthSystem();
+    initVocabularySystem();
     // initChatSystem(); // Disabled
 
     // KIỂM TRA ĐĂNG NHẬP: NẾU CHƯA ĐĂNG NHẬP THÌ HỆ THỐNG BẬT MODAL ĐĂNG NHẬP MẶC ĐỊNH
@@ -270,7 +272,8 @@ function saveUserData() {
         mailbox: state.mailbox,
         streak: state.streak,
         lastCheckinDate: state.lastCheckinDate,
-        exercises: state.exercises
+        exercises: state.exercises,
+        vocabulary: state.vocabulary
     };
     localStorage.setItem(userKey, JSON.stringify(userData));
     localStorage.setItem('studyflow_current_user', JSON.stringify(currentUser));
@@ -294,6 +297,7 @@ function loadUserData() {
         state.streak = saved.streak || 1;
         state.lastCheckinDate = saved.lastCheckinDate || '';
         state.exercises = saved.exercises || [];
+        state.vocabulary = saved.vocabulary || [];
     } else {
         state.tasks = [];
         state.subjects = DEFAULT_SUBJECTS;
@@ -301,6 +305,7 @@ function loadUserData() {
         state.streak = 1;
         state.lastCheckinDate = '';
         state.exercises = [];
+        state.vocabulary = [];
     }
 
     const nameEl = document.getElementById('sidebar-user-name');
@@ -3868,4 +3873,341 @@ function submitQuiz(isReopen = false) {
 
 function closeTakeQuizModal() {
     document.getElementById('take-quiz-modal').classList.remove('active');
+}
+
+// ==========================================
+// VOCABULARY SPACED REPETITION SYSTEM
+// ==========================================
+
+let currentFlashcards = [];
+let currentFlashcardIndex = 0;
+
+function initVocabularySystem() {
+    const btnOpenImport = document.getElementById('btn-open-import-vocab-modal');
+    const btnCloseImport = document.getElementById('btn-close-import-vocab-modal');
+    const btnCancelImport = document.getElementById('btn-cancel-import-vocab');
+    const btnStartImport = document.getElementById('btn-start-import-vocab');
+    
+    const fileInput = document.getElementById('vocab-file-input');
+    const uploadZone = document.getElementById('vocab-upload-zone');
+    
+    const btnCloseFlashcard = document.getElementById('btn-close-flashcard-modal');
+    const btnForget = document.getElementById('btn-fc-forget');
+    const btnRemember = document.getElementById('btn-fc-remember');
+
+    if (btnOpenImport) btnOpenImport.addEventListener('click', () => document.getElementById('import-vocab-modal').classList.add('active'));
+    if (btnCloseImport) btnCloseImport.addEventListener('click', () => document.getElementById('import-vocab-modal').classList.remove('active'));
+    if (btnCancelImport) btnCancelImport.addEventListener('click', () => document.getElementById('import-vocab-modal').classList.remove('active'));
+    
+    if (btnStartImport) btnStartImport.addEventListener('click', startVocabImport);
+    
+    if (uploadZone && fileInput) {
+        uploadZone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (e) => {
+            if(e.target.files && e.target.files[0]) {
+                document.getElementById('vocab-file-name').textContent = e.target.files[0].name;
+            }
+        });
+        uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); uploadZone.style.borderColor = 'var(--primary-color)'; });
+        uploadZone.addEventListener('dragleave', (e) => { e.preventDefault(); uploadZone.style.borderColor = 'var(--border-color)'; });
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.style.borderColor = 'var(--border-color)';
+            if(e.dataTransfer.files && e.dataTransfer.files[0]) {
+                fileInput.files = e.dataTransfer.files;
+                document.getElementById('vocab-file-name').textContent = e.dataTransfer.files[0].name;
+            }
+        });
+    }
+
+    if (btnCloseFlashcard) btnCloseFlashcard.addEventListener('click', closeFlashcardModal);
+    if (btnForget) btnForget.addEventListener('click', handleVocabForget);
+    if (btnRemember) btnRemember.addEventListener('click', handleVocabRemember);
+    
+    const tabVocab = document.getElementById('tab-vocabulary');
+    if (tabVocab) {
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                if (mutation.target.classList.contains('active')) {
+                    renderVocabTopics();
+                }
+            });
+        });
+        observer.observe(tabVocab, { attributes: true, attributeFilter: ['class'] });
+    }
+}
+
+async function startVocabImport() {
+    if(!geminiApiKey) {
+        alert('Vui lòng vào tab Bài Tập, bấm Tạo Quiz Bằng AI để nhập API Key trước khi sử dụng tính năng AI này!');
+        return;
+    }
+    const fileInput = document.getElementById('vocab-file-input');
+    if(!fileInput.files || fileInput.files.length === 0) {
+        alert('Vui lòng chọn hoặc kéo thả 1 file tài liệu (PDF, Excel, hoặc Ảnh)!');
+        return;
+    }
+    const file = fileInput.files[0];
+    const progressState = document.getElementById('vocab-progress-state');
+    const progressText = document.getElementById('vocab-progress-text');
+    const btnStart = document.getElementById('btn-start-import-vocab');
+    
+    progressState.style.display = 'block';
+    btnStart.disabled = true;
+    
+    try {
+        progressText.textContent = 'Đang đọc nội dung file...';
+        
+        let base64String = '';
+        let mimeType = file.type;
+
+        const base64Data = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
+        
+        mimeType = base64Data.split(';')[0].split(':')[1];
+        base64String = base64Data.split(',')[1];
+        
+        progressText.textContent = 'AI đang bóc tách và tự động chia nhóm từ vựng (khoảng 5-15 giây)...';
+        
+        let generateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+        const prompt = \`Bạn là hệ thống bóc tách từ vựng tiếng Anh. Dựa vào file tôi đính kèm (có thể là PDF, hình ảnh, văn bản hoặc Excel), hãy trích xuất TẤT CẢ từ vựng tiếng Anh xuất hiện trong file cùng với nghĩa tiếng Việt của chúng.
+
+Quy tắc gom nhóm (CỰC KỲ QUAN TRỌNG):
+1. Phân loại từ vựng vào các chủ đề (topic) rõ ràng (VD: "School", "Technology", "Animals").
+2. Nếu các từ không thuộc chủ đề rõ ràng nào, hãy tự động gom chúng thành các nhóm nhỏ (VD: "Từ vựng chung - Phần 1", "Từ vựng chung - Phần 2"), MỖI NHÓM ĐÚNG 10 TỪ. 
+
+Hãy trả về DUY NHẤT một mảng JSON (không có markdown hay giải thích thêm) theo đúng cấu trúc sau:
+[
+  {
+    "word": "apple",
+    "meaning": "quả táo",
+    "example": "I eat an apple.",
+    "topic": "Từ vựng chung - Phần 1"
+  }
+]\`.trim();
+
+        let resJson = null;
+        for (let modelName of generateModels) {
+            try {
+                const url = \`https://generativelanguage.googleapis.com/v1beta/models/\${modelName}:generateContent?key=\${geminiApiKey}\`;
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [
+                                { text: prompt },
+                                {
+                                    inlineData: {
+                                        mimeType: mimeType,
+                                        data: base64String
+                                    }
+                                }
+                            ]
+                        }],
+                        generationConfig: { temperature: 0.2 }
+                    })
+                });
+                
+                if(!response.ok) continue;
+                
+                const data = await response.json();
+                let resText = data.candidates[0].content.parts[0].text;
+                resText = resText.replace(/^\\s*\`\`\`json/i, '').replace(/\`\`\`\\s*$/, '').trim();
+                resJson = JSON.parse(resText);
+                break;
+            } catch (err) {
+                console.warn(modelName + " failed", err);
+            }
+        }
+        
+        if(resJson && Array.isArray(resJson) && resJson.length > 0) {
+            if (!state.vocabulary) state.vocabulary = [];
+            
+            resJson.forEach(item => {
+                state.vocabulary.push({
+                    id: 'voc-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
+                    word: item.word,
+                    meaning: item.meaning,
+                    example: item.example || '',
+                    topic: item.topic || 'Chưa phân loại',
+                    stage: 0,
+                    lastReviewed: 0,
+                    nextReviewDate: 0
+                });
+            });
+            
+            saveUserData();
+            document.getElementById('import-vocab-modal').classList.remove('active');
+            renderVocabTopics();
+            alert(\`Đã nhập thành công \${resJson.length} từ vựng mới!\`);
+        } else {
+            throw new Error('AI không tìm thấy từ vựng nào hoặc định dạng file chưa được hỗ trợ tốt.');
+        }
+    } catch (err) {
+        alert('Lỗi: ' + err.message);
+    } finally {
+        progressState.style.display = 'none';
+        btnStart.disabled = false;
+        fileInput.value = '';
+        document.getElementById('vocab-file-name').textContent = '';
+    }
+}
+
+function calculateNextReviewDate(currentStage) {
+    const now = Date.now();
+    const msInDay = 24 * 60 * 60 * 1000;
+    
+    let daysToAdd = 1;
+    switch(currentStage) {
+        case 0: daysToAdd = 2; break; // Học xong lần 1, 2 ngày sau ôn
+        case 1: daysToAdd = 4; break; // Ôn xong lần 1, 4 ngày sau ôn (tổng ~7 ngày)
+        case 2: daysToAdd = 7; break; // Ôn xong lần 2, 7 ngày sau ôn (tổng ~14 ngày)
+        case 3: daysToAdd = 16; break; // Ôn xong lần 3, 16 ngày sau ôn (tổng ~30 ngày)
+        default: daysToAdd = 30; break;
+    }
+    return now + (daysToAdd * msInDay);
+}
+
+function renderVocabTopics() {
+    const container = document.getElementById('vocab-topics-container');
+    const statsInfo = document.getElementById('vocab-stats-info');
+    const badge = document.getElementById('due-vocab-count-badge');
+    if(!container) return;
+    
+    if(!state.vocabulary) state.vocabulary = [];
+    
+    const now = Date.now();
+    let dueCount = 0;
+    
+    const topicsMap = {};
+    
+    state.vocabulary.forEach(v => {
+        if(!topicsMap[v.topic]) topicsMap[v.topic] = { total: 0, due: 0, mastered: 0 };
+        topicsMap[v.topic].total++;
+        
+        const isDue = (v.stage === 0) || (v.nextReviewDate > 0 && now >= v.nextReviewDate);
+        if (isDue) {
+            topicsMap[v.topic].due++;
+            dueCount++;
+        }
+        if (v.stage >= 4) {
+            topicsMap[v.topic].mastered++;
+        }
+    });
+    
+    if(statsInfo) statsInfo.innerHTML = \`Bạn có <strong>\${dueCount}</strong> từ vựng cần học/ôn tập hôm nay.\`;
+    if (badge) {
+        badge.textContent = dueCount;
+        badge.style.display = dueCount > 0 ? 'inline-block' : 'none';
+    }
+    
+    container.innerHTML = '';
+    
+    if (Object.keys(topicsMap).length === 0) {
+        container.innerHTML = \`<div class="empty-state" style="grid-column: 1 / -1;">
+            <div class="empty-icon"><i class="fa-solid fa-box-open"></i></div>
+            <p>Chưa có từ vựng nào. Hãy quét file để thêm!</p>
+        </div>\`;
+        return;
+    }
+    
+    Object.keys(topicsMap).forEach(topic => {
+        const stats = topicsMap[topic];
+        const hasDue = stats.due > 0;
+        
+        const card = document.createElement('div');
+        card.className = 'task-item';
+        card.style.flexDirection = 'column';
+        card.style.alignItems = 'flex-start';
+        card.style.cursor = 'pointer';
+        card.style.borderLeft = hasDue ? '4px solid var(--danger-color)' : '4px solid var(--success-color)';
+        
+        card.innerHTML = \`
+            <h4 style="margin:0; font-size: 1.1rem;">\${topic}</h4>
+            <div style="margin-top: 8px; font-size: 0.9rem; color: var(--text-secondary); width: 100%; display: flex; justify-content: space-between;">
+                <span>Tổng: \${stats.total} từ</span>
+                \${hasDue ? \`<span style="color: var(--danger-color); font-weight: bold;"><i class="fa-solid fa-clock"></i> Cần ôn: \${stats.due}</span>\` : \`<span style="color: var(--success-color);"><i class="fa-solid fa-check"></i> Đã ôn xong</span>\`}
+            </div>
+            <button class="btn \${hasDue ? 'btn-primary' : 'btn-outline'} btn-sm" style="margin-top: 15px; width: 100%;" onclick="openFlashcards('\${encodeURIComponent(topic)}')">
+                <i class="fa-solid fa-layer-group"></i> Học Chủ Đề Này
+            </button>
+        \`;
+        container.appendChild(card);
+    });
+}
+
+window.toggleFlashcardFlip = function() {
+    document.getElementById('flashcard-card-element').classList.toggle('flipped');
+};
+
+window.openFlashcards = function(encodedTopic) {
+    const topic = decodeURIComponent(encodedTopic);
+    const now = Date.now();
+    
+    currentFlashcards = state.vocabulary.filter(v => v.topic === topic && ((v.stage === 0) || (v.nextReviewDate > 0 && now >= v.nextReviewDate)));
+    
+    if (currentFlashcards.length === 0) {
+        alert('Tuyệt vời! Bạn đã hoàn thành tất cả từ vựng cần ôn trong chủ đề này hôm nay.');
+        return;
+    }
+    
+    currentFlashcardIndex = 0;
+    document.getElementById('flashcard-topic-title').innerHTML = \`<i class="fa-solid fa-graduation-cap"></i> \${topic}\`;
+    document.getElementById('flashcard-modal').classList.add('active');
+    
+    renderCurrentFlashcard();
+};
+
+function renderCurrentFlashcard() {
+    if (currentFlashcardIndex >= currentFlashcards.length) {
+        alert('🎉 Bạn đã hoàn thành tất cả thẻ của phiên học này!');
+        closeFlashcardModal();
+        renderVocabTopics();
+        return;
+    }
+    
+    const wordObj = currentFlashcards[currentFlashcardIndex];
+    document.getElementById('flashcard-card-element').classList.remove('flipped');
+    
+    document.getElementById('fc-word').textContent = wordObj.word;
+    document.getElementById('fc-meaning').textContent = wordObj.meaning;
+    document.getElementById('fc-example').textContent = wordObj.example || '';
+    
+    document.getElementById('flashcard-progress-text').textContent = \`Từ \${currentFlashcardIndex + 1} / \${currentFlashcards.length}\`;
+}
+
+function handleVocabForget(e) {
+    if (e) e.stopPropagation();
+    const wordObj = currentFlashcards[currentFlashcardIndex];
+    
+    wordObj.stage = 0;
+    wordObj.lastReviewed = Date.now();
+    wordObj.nextReviewDate = 0; 
+    saveUserData();
+    
+    currentFlashcardIndex++;
+    renderCurrentFlashcard();
+}
+
+function handleVocabRemember(e) {
+    if (e) e.stopPropagation();
+    const wordObj = currentFlashcards[currentFlashcardIndex];
+    
+    wordObj.nextReviewDate = calculateNextReviewDate(wordObj.stage);
+    wordObj.stage++;
+    wordObj.lastReviewed = Date.now();
+    saveUserData();
+    
+    currentFlashcardIndex++;
+    renderCurrentFlashcard();
+}
+
+function closeFlashcardModal() {
+    document.getElementById('flashcard-modal').classList.remove('active');
+    renderVocabTopics();
 }
