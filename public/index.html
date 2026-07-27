@@ -68,6 +68,7 @@
                     <span>Bài Tập & Luyện Tập</span>
                     <span class="badge" id="pending-exercise-count-badge" style="display:none">0</span>
                 </button>
+
             </nav>
 
             <!-- Streak Card Widget & Check-in Button -->
@@ -421,6 +422,7 @@
                 </div>
             </section>
 
+            
         </main>
     </div>
 
@@ -695,89 +697,129 @@
         </div>
     </div>
 
+    
+>     <!-- MODAL: CẤU HÌNH AI (GEMINI API KEY) -->
+      <div class="modal-overlay" id="ai-config-modal">
+          <div class="modal-card">
+              <div class="modal-header">
+                  <h2><i class="fa-solid fa-gear"></i> Cấu Hình AI (Gemini)</h2>
+                  <button class="modal-close-btn" id="btn-close-ai-config-modal">&times;</button>
+              </div>
+              <div class="modal-body">
+                  <p style="font-size: 0.9rem; margin-bottom: 15px; line-height: 1.5; color: var(--text-secondary);">
+                      Để sử dụng tính năng tạo Bài Tập tự động, bạn cần cung cấp <strong>Google Gemini API 
+Key</strong>. Key này hoàn toàn miễn phí và chỉ lưu trữ cục bộ trên máy của bạn.
+                  </p>
+                  <div class="form-group">
+                      <label for="gemini-api-key-input">Gemini API Key <span class="text-danger">*</span></label>
+                      <input type="password" id="gemini-api-key-input" placeholder="Nhập API Key bắt đầu bằng 
+AIzaSy...">
+                      <small style="display:block; margin-top:5px;"><a href="https://aistudio.google.com/app/apikey" 
+target="_blank" style="color: var(--primary-color);">Lấy API Key tại đây</a></small>
+                  </div>
+              </div>
+              <div class="modal-footer">
+                  <button type="button" class="btn btn-outline" id="btn-cancel-ai-config">Hủy</button>
+                  <button type="button" class="btn btn-primary" id="btn-save-ai-config"><i class="fa-solid 
+fa-floppy-disk"></i> Lưu Cấu Hình</button>
+              </div>
+          </div>
+      </div>
+  
+      <!-- MODAL: TẠO QUIZ BẰNG AI -->
+      <div class="modal-overlay" id="ai-quiz-modal">
+          <div class="modal-card" style="max-width: 600px;">
+              <div class="modal-header">
+                  <h2><i class="fa-solid fa-wand-magic-sparkles"></i> Tạo Bài Tập Trắc Nghiệm</h2>
+                  <button class="modal-close-btn" id="btn-close-ai-quiz-modal">&times;</button>
+              </div>
+              <div class="modal-body">
+                  <div class="ai-quiz-upload-zone" id="ai-quiz-upload-zone" style="border: 2px dashed 
+var(--border-color); border-radius: 8px; padding: 30px; text-align: center; cursor: pointer; margin-bottom: 15px; 
+transition: border-color 0.2s;">
+                      <i class="fa-solid fa-file-pdf" style="font-size: 40px; color: var(--primary-color); 
+margin-bottom: 10px;"></i>
+                      <p>Kéo thả file PDF/TXT vào đây hoặc <strong>Click để chọn file</strong></p>
+                      <p id="ai-quiz-file-name" style="margin-top: 10px; font-weight: 600; color: 
+var(--primary-color);"></p>
+                      <small style="color: var(--text-secondary);">Hệ thống sẽ quét nội dung và tự tạo 5-10 câu trắc 
+nghiệm</small>
+                      <input type="file" id="ai-quiz-file-input" accept=".pdf,.txt" style="display: none;">
+                  </div>
+                  
+                  <div class="form-group">
+                      <label for="ai-quiz-topic-input">Gợi ý thêm cho AI (Tùy chọn)</label>
+                      <input type="text" id="ai-quiz-topic-input" placeholder="Ví dụ: Tập trung vào chương 2, hoặc mức 
+độ khó...">
+                  </div>
+  
+                  <!-- Progress State -->
+                  <div id="ai-quiz-progress-state" style="display: none; text-align: center; padding: 20px 0;">
+                      <div class="connecting-spinner" style="border-top-color: var(--primary-color); margin: 0 auto 
+15px; display: block;"></div>
+                      <p id="ai-quiz-progress-text" style="font-weight: 500;">Đang xử lý...</p>
+                  </div>
+              </div>
+              <div class="modal-footer">
+                  <button type="button" class="btn btn-outline" id="btn-cancel-ai-quiz">Hủy</button>
+                  <button type="button" class="btn btn-outline" id="btn-open-ai-config" style="margin-right: auto;" 
+title="Cấu hình API Key"><i class="fa-solid fa-gear"></i> API Key</button>
+                  <button type="button" class="btn btn-primary" id="btn-start-ai-gen"><i class="fa-solid 
+fa-robot"></i> Bắt Đầu Tạo</button>
+              </div>
+          </div>
+      </div>
+  
+      <!-- MODAL: LÀM BÀI TRẮC NGHIỆM -->
+      <div class="modal-overlay" id="take-quiz-modal">
+          <div class="modal-card" style="max-width: 800px; width: 90%; max-height: 90vh; display: flex; 
+flex-direction: column;">
+              <div class="modal-header">
+                  <h2 id="take-quiz-title"><i class="fa-solid fa-list-check"></i> Làm Bài Kiểm Tra</h2>
+                  <button class="modal-close-btn" id="btn-close-take-quiz-modal">&times;</button>
+              </div>
+              <div class="modal-body" style="overflow-y: auto; flex-grow: 1; padding: 20px;">
+                  <div id="quiz-questions-container">
+                      <!-- Quiz rendering here -->
+                  </div>
+                  <div id="quiz-result-display" style="display: none; text-align: center; margin-top: 20px; padding: 
+15px; border-radius: 8px; background: rgba(99, 102, 241, 0.1);">
+                      <h3 style="color: var(--primary-color); font-size: 1.5rem; margin-bottom: 5px;">Kết Quả: <span 
+id="quiz-score-text">0/0</span></h3>
+                      <p id="quiz-feedback-text">Làm tốt lắm!</p>
+                  </div>
+              </div>
+              <div class="modal-footer">
+                  <button type="button" class="btn btn-outline" id="btn-cancel-take-quiz">Đóng</button>
+                  <button type="button" class="btn btn-primary" id="btn-submit-quiz"><i class="fa-solid 
+fa-check-double"></i> Nộp Bài</button>
+              </div>
+          </div>
+      </div>
+  
+      <!-- MODAL: THÊM BÀI TẬP -->
+      <div class="modal-overlay" id="exercise-modal">
+          <div class="modal-card">
+              <div class="modal-header">
+                  <h2 id="exercise-modal-title"><i class="fa-solid fa-pen-ruler"></i> Thêm Bài Tập Mới</h2>
+                  <button class="modal-close-btn" id="btn-close-exercise-modal">&times;</button>
+              </div>
+              <form id="exercise-form">
+                  <input type="hidden" id="exercise-id">
+                  
+                  <div class="form-group">
+                      <label for="exercise-title">Tiêu đề bài tập <span class="text-danger">*</span></label>
+                      <input type="text" id="exercise-title" required placeholder="Ví dụ: Làm bài tập 1, 2, 3 SGK 
+Toán...">
+                  </div>
+  
+                  <div class="form-group">
+                      <label for="exercise-subject-select">Môn học <span class="text-danger">*</span></label>
+                      <select id="exercise-subject-select" required>
+                          <option value="">-- Chọn môn học --</option>
 
 
-    <!-- MODAL: CẤU HÌNH AI (GEMINI API KEY) -->
-    <div class="modal-overlay" id="ai-config-modal">
-        <div class="modal-card">
-            <div class="modal-header">
-                <h2><i class="fa-solid fa-gear"></i> Cấu Hình AI (Gemini)</h2>
-                <button class="modal-close-btn" id="btn-close-ai-config-modal">&times;</button>
-            </div>
-            <div class="modal-body">
-                <p style="font-size: 0.9rem; margin-bottom: 15px; line-height: 1.5; color: var(--text-secondary);">
-                    Để sử dụng tính năng tạo Bài Tập tự động, bạn cần cung cấp <strong>Google Gemini API Key</strong>. Key này hoàn toàn miễn phí và chỉ lưu trữ cục bộ trên máy của bạn.
-                </p>
-                <div class="form-group">
-                    <label for="gemini-api-key-input">Gemini API Key <span class="text-danger">*</span></label>
-                    <input type="password" id="gemini-api-key-input" placeholder="Nhập API Key bắt đầu bằng AIzaSy...">
-                    <small style="display:block; margin-top:5px;"><a href="https://aistudio.google.com/app/apikey" target="_blank" style="color: var(--primary-color);">Lấy API Key tại đây</a></small>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-outline" id="btn-cancel-ai-config">Hủy</button>
-                <button type="button" class="btn btn-primary" id="btn-save-ai-config"><i class="fa-solid fa-floppy-disk"></i> Lưu Cấu Hình</button>
-            </div>
-        </div>
-    </div>
 
-    <!-- MODAL: TẠO QUIZ BẰNG AI -->
-    <div class="modal-overlay" id="ai-quiz-modal">
-        <div class="modal-card" style="max-width: 600px;">
-            <div class="modal-header">
-                <h2><i class="fa-solid fa-wand-magic-sparkles"></i> Tạo Bài Tập Trắc Nghiệm</h2>
-                <button class="modal-close-btn" id="btn-close-ai-quiz-modal">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="ai-quiz-upload-zone" id="ai-quiz-upload-zone" style="border: 2px dashed var(--border-color); border-radius: 8px; padding: 30px; text-align: center; cursor: pointer; margin-bottom: 15px; transition: border-color 0.2s;">
-                    <i class="fa-solid fa-file-pdf" style="font-size: 40px; color: var(--primary-color); margin-bottom: 10px;"></i>
-                    <p>Kéo thả file PDF/TXT vào đây hoặc <strong>Click để chọn file</strong></p>
-                    <p id="ai-quiz-file-name" style="margin-top: 10px; font-weight: 600; color: var(--primary-color);"></p>
-                    <small style="color: var(--text-secondary);">Hệ thống sẽ quét nội dung và tự tạo 5-10 câu trắc nghiệm</small>
-                    <input type="file" id="ai-quiz-file-input" accept=".pdf,.txt" style="display: none;">
-                </div>
-                
-                <div class="form-group">
-                    <label for="ai-quiz-topic-input">Gợi ý thêm cho AI (Tùy chọn)</label>
-                    <input type="text" id="ai-quiz-topic-input" placeholder="Ví dụ: Tập trung vào chương 2, hoặc mức độ khó...">
-                </div>
-
-                <!-- Progress State -->
-                <div id="ai-quiz-progress-state" style="display: none; text-align: center; padding: 20px 0;">
-                    <div class="connecting-spinner" style="border-top-color: var(--primary-color); margin: 0 auto 15px; display: block;"></div>
-                    <p id="ai-quiz-progress-text" style="font-weight: 500;">Đang xử lý...</p>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-outline" id="btn-cancel-ai-quiz">Hủy</button>
-                <button type="button" class="btn btn-outline" id="btn-open-ai-config" style="margin-right: auto;" title="Cấu hình API Key"><i class="fa-solid fa-gear"></i> API Key</button>
-                <button type="button" class="btn btn-primary" id="btn-start-ai-gen"><i class="fa-solid fa-robot"></i> Bắt Đầu Tạo</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- MODAL: LÀM BÀI TRẮC NGHIỆM -->
-    <div class="modal-overlay" id="take-quiz-modal">
-        <div class="modal-card" style="max-width: 800px; width: 90%; max-height: 90vh; display: flex; flex-direction: column;">
-            <div class="modal-header">
-                <h2 id="take-quiz-title"><i class="fa-solid fa-list-check"></i> Làm Bài Kiểm Tra</h2>
-                <button class="modal-close-btn" id="btn-close-take-quiz-modal">&times;</button>
-            </div>
-            <div class="modal-body" style="overflow-y: auto; flex-grow: 1; padding: 20px;">
-                <div id="quiz-questions-container">
-                    <!-- Quiz rendering here -->
-                </div>
-                <div id="quiz-result-display" style="display: none; text-align: center; margin-top: 20px; padding: 15px; border-radius: 8px; background: rgba(99, 102, 241, 0.1);">
-                    <h3 style="color: var(--primary-color); font-size: 1.5rem; margin-bottom: 5px;">Kết Quả: <span id="quiz-score-text">0/0</span></h3>
-                    <p id="quiz-feedback-text">Làm tốt lắm!</p>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-outline" id="btn-cancel-take-quiz">Đóng</button>
-                <button type="button" class="btn btn-primary" id="btn-submit-quiz"><i class="fa-solid fa-check-double"></i> Nộp Bài</button>
-            </div>
-        </div>
-    </div>
 
     <!-- MODAL: THÊM BÀI TẬP -->
     <div class="modal-overlay" id="exercise-modal">
