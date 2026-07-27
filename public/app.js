@@ -4002,36 +4002,7 @@ async function startVocabImport() {
         
         progressText.textContent = 'Đang kết nối AI để bóc tách từ vựng (khoảng 5-15 giây)...';
 
-        let generateModels = [];
-        try {
-            const listUrl = "https://generativelanguage.googleapis.com/v1beta/models?key=" + geminiApiKey;
-            const listRes = await fetch(listUrl);
-            if (listRes.ok) {
-                const listData = await listRes.json();
-                if (listData.models && listData.models.length > 0) {
-                    generateModels = listData.models
-                        .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent') && m.name.includes('gemini') && !m.name.includes('computer-use') && !m.name.includes('imagen') && !m.name.includes('embedding') && (m.name.includes('flash') || m.name.includes('pro')))
-                        .map(m => m.name.replace('models/', ''));
-                }
-            } else if (listRes.status === 400 || listRes.status === 403) {
-                const errJson = await listRes.json().catch(() => ({}));
-                throw new Error(errJson.error?.message || 'API Key Gemini không hợp lệ hoặc bị từ chối!');
-            }
-        } catch (err) {
-            console.warn('Không lấy được danh sách model:', err);
-            if (err.message.includes('API Key')) throw err;
-        }
-
-        if (generateModels.length === 0) {
-            generateModels = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
-        } else {
-            generateModels.sort((a, b) => {
-                let scoreA = a.includes('2.0-flash') ? 4 : (a.includes('1.5-flash') ? 3 : (a.includes('flash') ? 2 : (a.includes('pro') ? 1 : 0)));
-                let scoreB = b.includes('2.0-flash') ? 4 : (b.includes('1.5-flash') ? 3 : (b.includes('flash') ? 2 : (b.includes('pro') ? 1 : 0)));
-                return scoreB - scoreA;
-            });
-        }
-        
+        const generateModels = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
         const promptText = "Bạn là hệ thống AI bóc tách từ vựng tiếng Anh chuyên nghiệp. Dựa vào hình ảnh/tài liệu đính kèm" + 
             (extractedText ? " và nội dung văn bản sau:\n" + extractedText : "") + 
             ", hãy tìm và trích xuất TẤT CẢ các từ vựng tiếng Anh xuất hiện kèm theo nghĩa tiếng Việt chuẩn xác nhất.\n\n" +
