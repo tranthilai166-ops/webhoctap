@@ -3321,27 +3321,27 @@ function renderExercises() {
         const subj = state.subjects.find(s => s.id === ex.subjectId) || { name: 'Không rõ', color: '#888' };
         
         const card = document.createElement('div');
-        card.className = \`task-item \${ex.completed ? 'completed' : ''}\`;
+        card.className = `task-item ${ex.completed ? 'completed' : ''}`;
         
-        const dueText = ex.dueDate ? \`<span class="task-date"><i class="fa-solid fa-clock"></i> Hạn nộp: \${ex.dueDate}</span>\` : '';
+        const dueText = ex.dueDate ? `<span class="task-date"><i class="fa-solid fa-clock"></i> Hạn nộp: ${ex.dueDate}</span>` : '';
         
-        card.innerHTML = \`
-            <div class="task-checkbox \${ex.completed ? 'checked' : ''}" onclick="toggleExerciseComplete('\${ex.id}')">
+        card.innerHTML = `
+            <div class="task-checkbox ${ex.completed ? 'checked' : ''}" onclick="toggleExerciseComplete('${ex.id}')">
                 <i class="fa-solid fa-check"></i>
             </div>
             <div class="task-content">
-                <h4 class="task-title" style="text-decoration: \${ex.completed ? 'line-through' : 'none'}">\${ex.title}</h4>
-                \${ex.desc ? \`<p class="task-desc" style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">\${ex.desc}</p>\` : ''}
+                <h4 class="task-title" style="text-decoration: ${ex.completed ? 'line-through' : 'none'}">${ex.title}</h4>
+                ${ex.desc ? `<p class="task-desc" style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">${ex.desc}</p>` : ''}
                 <div class="task-meta">
-                    <span class="task-subject" style="background: \${subj.color}20; color: \${subj.color}"><i class="fa-solid fa-tag"></i> \${subj.name}</span>
-                    \${dueText}
+                    <span class="task-subject" style="background: ${subj.color}20; color: ${subj.color}"><i class="fa-solid fa-tag"></i> ${subj.name}</span>
+                    ${dueText}
                 </div>
             </div>
             <div class="task-actions">
-                <button class="icon-btn edit" onclick='openExerciseModal(\${JSON.stringify(ex).replace(/'/g, "&#39;")})' title="Sửa"><i class="fa-solid fa-pen"></i></button>
-                <button class="icon-btn danger" onclick="deleteExercise('\${ex.id}')" title="Xóa"><i class="fa-solid fa-trash"></i></button>
+                <button class="icon-btn edit" onclick='openExerciseModal(${JSON.stringify(ex).replace(/'/g, "&#39;")})' title="Sửa"><i class="fa-solid fa-pen"></i></button>
+                <button class="icon-btn danger" onclick="deleteExercise('${ex.id}')" title="Xóa"><i class="fa-solid fa-trash"></i></button>
             </div>
-        \`;
+        `;
         container.appendChild(card);
     });
 }
