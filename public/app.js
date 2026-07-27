@@ -3130,12 +3130,8 @@ function initExercises() {
         });
     }
 
-    const searchInput = document.getElementById('exercise-search-input');
-    const statusSelect = document.getElementById('filter-exercise-status');
     const subjSelect = document.getElementById('filter-exercise-subject');
 
-    if (searchInput) searchInput.addEventListener('input', renderExercises);
-    if (statusSelect) statusSelect.addEventListener('change', renderExercises);
     if (subjSelect) subjSelect.addEventListener('change', renderExercises);
 
     // Initial render when tab switches or loaded
@@ -3316,21 +3312,15 @@ loadUserData = function() {
 };
 
 function renderExercises() {
-    const container = document.getElementById('full-exercises-list');
-    const summary = document.getElementById('exercise-summary-counter');
-    if (!container) return;
+    // We now have two separate containers, check them below
 
     if (!state.exercises) state.exercises = [];
 
-    const searchText = (document.getElementById('exercise-search-input')?.value || '').toLowerCase();
-    const statusFilter = document.getElementById('filter-exercise-status')?.value || 'all';
     const subjFilter = document.getElementById('filter-exercise-subject')?.value || 'all';
 
     let filtered = state.exercises.filter(ex => {
-        const matchSearch = ex.title.toLowerCase().includes(searchText) || (ex.desc || '').toLowerCase().includes(searchText);
-        const matchStatus = statusFilter === 'all' || (statusFilter === 'completed' ? ex.completed : !ex.completed);
         const matchSubj = subjFilter === 'all' || ex.subjectId === subjFilter;
-        return matchSearch && matchStatus && matchSubj;
+        return matchSubj;
     });
 
     // Sort: pending first, then by due date
@@ -3342,23 +3332,22 @@ function renderExercises() {
         return 0;
     });
 
-    container.innerHTML = '';
-    if (summary) summary.textContent = `Hiển thị ${filtered.length} bài tập`;
+    const pendingContainer = document.getElementById('pending-exercises-list');
+    const completedContainer = document.getElementById('completed-exercises-list');
+    const pendingSummary = document.getElementById('exercise-pending-counter');
+    const completedSummary = document.getElementById('exercise-completed-counter');
 
-    if (filtered.length === 0) {
-        container.innerHTML = `<div class="empty-state">
-            <div class="empty-icon"><i class="fa-solid fa-clipboard-list"></i></div>
-            <p>Không có bài tập nào phù hợp.</p>
-        </div>`;
-        return;
-    }
+    if (pendingContainer) pendingContainer.innerHTML = '';
+    if (completedContainer) completedContainer.innerHTML = '';
 
-    filtered.forEach(ex => {
+    const pendingList = filtered.filter(ex => !ex.completed);
+    const completedList = filtered.filter(ex => ex.completed);
+
+    if (pendingSummary) pendingSummary.textContent = `${pendingList.length} bài tập`;
+    if (completedSummary) completedSummary.textContent = `${completedList.length} bài tập`;
+
+    const createCardHTML = (ex) => {
         const subj = state.subjects.find(s => s.id === ex.subjectId) || { name: 'Không rõ', color: '#888' };
-        
-        const card = document.createElement('div');
-        card.className = `task-item ${ex.completed ? 'completed' : ''}`;
-        
         const dueText = ex.dueDate ? `<span class="task-date"><i class="fa-solid fa-clock"></i> Hạn nộp: ${ex.dueDate}</span>` : '';
         const fileLink = ex.attachedFile ? `
             <div style="margin-top: 6px;">
@@ -3367,28 +3356,55 @@ function renderExercises() {
                 </a>
             </div>
         ` : '';
-        
-        card.innerHTML = `
-            <div class="task-checkbox ${ex.completed ? 'checked' : ''}" onclick="toggleExerciseComplete('${ex.id}')">
-                <i class="fa-solid fa-check"></i>
-            </div>
-            <div class="task-content">
-                <h4 class="task-title" style="text-decoration: ${ex.completed ? 'line-through' : 'none'}">${ex.title}</h4>
-                ${ex.desc ? `<p class="task-desc" style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">${ex.desc}</p>` : ''}
-                ${fileLink}
-                <div class="task-meta" style="margin-top: 6px;">
-                    <span class="task-subject" style="background: ${subj.color}20; color: ${subj.color}"><i class="fa-solid fa-tag"></i> ${subj.name}</span>
-                    ${dueText}
+
+        return `
+            <div class="task-item ${ex.completed ? 'completed' : ''}">
+                <div class="task-checkbox ${ex.completed ? 'checked' : ''}" onclick="toggleExerciseComplete('${ex.id}')">
+                    <i class="fa-solid fa-check"></i>
+                </div>
+                <div class="task-content">
+                    <h4 class="task-title" style="text-decoration: ${ex.completed ? 'line-through' : 'none'}">${ex.title}</h4>
+                    ${ex.desc ? `<p class="task-desc" style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">${ex.desc}</p>` : ''}
+                    ${fileLink}
+                    <div class="task-meta" style="margin-top: 6px;">
+                        <span class="task-subject" style="background: ${subj.color}20; color: ${subj.color}"><i class="fa-solid fa-tag"></i> ${subj.name}</span>
+                        ${dueText}
+                    </div>
+                </div>
+                <div class="task-actions">
+                    ${ex.isQuiz && !ex.completed ? `<button class="btn btn-primary" style="padding: 5px 12px; font-size: 0.85rem; border-radius: 6px; margin-right: 5px;" onclick="openQuizExercise('${ex.id}')"><i class="fa-solid fa-play"></i> Làm bài</button>` : ''}
+                    <button class="icon-btn edit" onclick="openExerciseModal(state.exercises.find(e => e.id === '${ex.id}'))" title="Sửa"><i class="fa-solid fa-pen"></i></button>
+                    <button class="icon-btn danger" onclick="deleteExercise('${ex.id}')" title="Xóa"><i class="fa-solid fa-trash"></i></button>
                 </div>
             </div>
-            <div class="task-actions">
-                ${ex.isQuiz ? `<button class="btn btn-primary" style="padding: 5px 12px; font-size: 0.85rem; border-radius: 6px; margin-right: 5px;" onclick="openQuizExercise('${ex.id}')"><i class="fa-solid fa-play"></i> Làm bài</button>` : ''}
-                <button class="icon-btn edit" onclick="openExerciseModal(state.exercises.find(e => e.id === '${ex.id}'))" title="Sửa"><i class="fa-solid fa-pen"></i></button>
-                <button class="icon-btn danger" onclick="deleteExercise('${ex.id}')" title="Xóa"><i class="fa-solid fa-trash"></i></button>
-            </div>
         `;
-        container.appendChild(card);
-    });
+    };
+
+    if (pendingContainer) {
+        if (pendingList.length === 0) {
+            pendingContainer.innerHTML = `<div class="empty-state">
+                <div class="empty-icon"><i class="fa-solid fa-clipboard-list"></i></div>
+                <p>Không có bài tập nào cần làm.</p>
+            </div>`;
+        } else {
+            pendingList.forEach(ex => {
+                pendingContainer.insertAdjacentHTML('beforeend', createCardHTML(ex));
+            });
+        }
+    }
+
+    if (completedContainer) {
+        if (completedList.length === 0) {
+            completedContainer.innerHTML = `<div class="empty-state">
+                <div class="empty-icon"><i class="fa-solid fa-check-circle"></i></div>
+                <p>Chưa hoàn thành bài tập nào.</p>
+            </div>`;
+        } else {
+            completedList.forEach(ex => {
+                completedContainer.insertAdjacentHTML('beforeend', createCardHTML(ex));
+            });
+        }
+    }
 }
 
 // ==========================================
