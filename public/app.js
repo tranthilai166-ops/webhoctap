@@ -166,49 +166,7 @@ let state = {
 
 // --- AUTHENTICATION HANDLERS ---
 
-/** Handle login */
-window.handleUserLogin = function(event) {
-  if (event) event.preventDefault();
-  const userIdRaw = document.getElementById('login-userid-input')?.value.trim() || '';
-  const password = document.getElementById('login-password-input')?.value || '';
-  const userId = normalizeUserId(userIdRaw);
-  if (!userId) { alert('Vui lòng nhập User ID'); return; }
-  const user = (systemDB.users || []).find(u => u.userId === userId);
-  if (!user) { alert('Người dùng không tồn tại, vui lòng đăng ký.'); return; }
-  if (user.password !== password) { alert('Mật khẩu không đúng.'); return; }
-  currentUser = { userId: user.userId, name: user.name };
-  localStorage.setItem('studyflow_current_user', JSON.stringify(currentUser));
-  const modal = document.getElementById('auth-modal');
-  if (modal) modal.classList.remove('active');
-  const info = document.getElementById('user-info');
-  if (info) info.textContent = `Xin chào, ${user.name}`;
-  if (typeof initApp === 'function') initApp();
-};
-
-/** Handle registration */
-window.handleUserRegister = function(event) {
-  if (event) event.preventDefault();
-  const name = document.getElementById('reg-name-input')?.value.trim() || '';
-  const rawId = document.getElementById('reg-userid-input')?.value.trim() || '';
-  const password = document.getElementById('reg-password-input')?.value || '';
-  const confirm = document.getElementById('reg-confirm-input')?.value || '';
-  const userId = normalizeUserId(rawId);
-  if (!name || !userId) { alert('Vui lòng nhập đầy đủ Họ và Tên và User ID'); return; }
-  if (password.length < 4) { alert('Mật khẩu ít nhất 4 ký tự'); return; }
-  if (password !== confirm) { alert('Mật khẩu xác nhận không khớp'); return; }
-  if ((systemDB.users || []).some(u => u.userId === userId)) { alert('User ID đã tồn tại'); return; }
-  const newUser = { userId, name, password };
-  systemDB.users = [...(systemDB.users || []), newUser];
-  saveSystemDB();
-  currentUser = { userId, name };
-  localStorage.setItem('studyflow_current_user', JSON.stringify(currentUser));
-  const modal = document.getElementById('auth-modal');
-  if (modal) modal.classList.remove('active');
-  const info = document.getElementById('user-info');
-  if (info) info.textContent = `Xin chào, ${name}`;
-  if (typeof initApp === 'function') initApp();
-};
-
+// Early auth handlers removed - using main handlers at line ~500
 // Live Study Session Overlay State
 let liveStudyState = {
     taskId: null,
@@ -3690,7 +3648,7 @@ CHỈ DẪN QUAN TRỌNG:
 - Nếu tài liệu không có đáp án, hãy tự phân tích nội dung và đưa ra đáp án chính xác nhất.
 - Nếu tài liệu chỉ là văn bản lý thuyết thông thường (không có câu hỏi), hãy TỰ ĐỘNG TẠO ra 10 - 20 câu hỏi trắc nghiệm hay nhất để kiểm tra kiến thức.
 
-Hãy trả về DUY NHẤT một mảng JSON (không có markdown \`\`\`json hoặc giải thích thêm) theo đúng cấu trúc sau:
+Hãy trả về DUY NHẤT một mảng JSON (không có markdown json hoặc giải thích thêm) theo đúng cấu trúc sau:
 [
   {
     "question": "Nội dung câu hỏi 1",
@@ -3699,7 +3657,7 @@ Hãy trả về DUY NHẤT một mảng JSON (không có markdown \`\`\`json ho�
     "explanation": "Giải thích chi tiết vì sao đáp án này đúng"
   }
 ]
-Chú ý: \`answer\` là index của mảng options (0, 1, 2, 3). Các câu trả lời phải là tiếng Việt nếu tài liệu tiếng Việt.
+Chú ý: "answer" là index của mảng options (0, 1, 2, 3). Các câu trả lời phải là tiếng Việt nếu tài liệu tiếng Việt.
     `.trim();
 
     // 2. Thử từng model cho đến khi thành công
@@ -4019,13 +3977,13 @@ async function startVocabImport() {
         progressText.textContent = 'AI đang bóc tách và tự động chia nhóm từ vựng (khoảng 5-15 giây)...';
         
         let generateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
-        const prompt = \`Bạn là hệ thống bóc tách từ vựng tiếng Anh. Dựa vào file tôi đính kèm (có thể là PDF, hình ảnh, văn bản hoặc Excel), hãy trích xuất TẤT CẢ từ vựng tiếng Anh xuất hiện trong file cùng với nghĩa tiếng Việt của chúng.
+        const prompt = `Bạn là hệ thống bóc tách từ vựng tiếng Anh. Dựa vào file tôi đính kèm (có thể là PDF, hình ảnh, văn bản hoặc Excel), hãy trích xuất TẤT CẢ từ vựng tiếng Anh xuất hiện trong file cùng với nghĩa tiếng Việt của chúng.
 
 Quy tắc gom nhóm (CỰC KỲ QUAN TRỌNG):
 1. Phân loại từ vựng vào các chủ đề (topic) rõ ràng (VD: "School", "Technology", "Animals").
 2. Nếu các từ không thuộc chủ đề rõ ràng nào, hãy tự động gom chúng thành các nhóm nhỏ (VD: "Từ vựng chung - Phần 1", "Từ vựng chung - Phần 2"), MỖI NHÓM ĐÚNG 10 TỪ. 
 
-Hãy trả về DUY NHẤT một mảng JSON (không có markdown hay giải thích thêm) theo đúng cấu trúc sau:
+Hãy trả về DUY NHẤT một mảng JSON (không có markdown json hoặc giải thích thêm) theo đúng cấu trúc sau:
 [
   {
     "word": "apple",
@@ -4033,12 +3991,12 @@ Hãy trả về DUY NHẤT một mảng JSON (không có markdown hay giải th�
     "example": "I eat an apple.",
     "topic": "Từ vựng chung - Phần 1"
   }
-]\`.trim();
+]`.trim();
 
         let resJson = null;
         for (let modelName of generateModels) {
             try {
-                const url = \`https://generativelanguage.googleapis.com/v1beta/models/\${modelName}:generateContent?key=\${geminiApiKey}\`;
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${geminiApiKey}`;
                 const response = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -4062,7 +4020,7 @@ Hãy trả về DUY NHẤT một mảng JSON (không có markdown hay giải th�
                 
                 const data = await response.json();
                 let resText = data.candidates[0].content.parts[0].text;
-                resText = resText.replace(/^\\s*\`\`\`json/i, '').replace(/\`\`\`\\s*$/, '').trim();
+                resText = resText.replace(/^\\s*```json/i, '').replace(/```\\s*$/, '').trim();
                 resJson = JSON.parse(resText);
                 break;
             } catch (err) {
@@ -4089,7 +4047,7 @@ Hãy trả về DUY NHẤT một mảng JSON (không có markdown hay giải th�
             saveUserData();
             document.getElementById('import-vocab-modal').classList.remove('active');
             renderVocabTopics();
-            alert(\`Đã nhập thành công \${resJson.length} từ vựng mới!\`);
+            alert(`Đã nhập thành công ${resJson.length} từ vựng mới!`);
         } else {
             throw new Error('AI không tìm thấy từ vựng nào hoặc định dạng file chưa được hỗ trợ tốt.');
         }
@@ -4145,7 +4103,7 @@ function renderVocabTopics() {
         }
     });
     
-    if(statsInfo) statsInfo.innerHTML = \`Bạn có <strong>\${dueCount}</strong> từ vựng cần học/ôn tập hôm nay.\`;
+    if(statsInfo) statsInfo.innerHTML = `Bạn có <strong>${dueCount}</strong> từ vựng cần học/ôn tập hôm nay.`;
     if (badge) {
         badge.textContent = dueCount;
         badge.style.display = dueCount > 0 ? 'inline-block' : 'none';
@@ -4154,10 +4112,10 @@ function renderVocabTopics() {
     container.innerHTML = '';
     
     if (Object.keys(topicsMap).length === 0) {
-        container.innerHTML = \`<div class="empty-state" style="grid-column: 1 / -1;">
+        container.innerHTML = `<div class="empty-state" style="grid-column: 1 / -1;">
             <div class="empty-icon"><i class="fa-solid fa-box-open"></i></div>
             <p>Chưa có từ vựng nào. Hãy quét file để thêm!</p>
-        </div>\`;
+        </div>`;
         return;
     }
     
@@ -4172,16 +4130,16 @@ function renderVocabTopics() {
         card.style.cursor = 'pointer';
         card.style.borderLeft = hasDue ? '4px solid var(--danger-color)' : '4px solid var(--success-color)';
         
-        card.innerHTML = \`
-            <h4 style="margin:0; font-size: 1.1rem;">\${topic}</h4>
+        card.innerHTML = `
+            <h4 style="margin:0; font-size: 1.1rem;">${topic}</h4>
             <div style="margin-top: 8px; font-size: 0.9rem; color: var(--text-secondary); width: 100%; display: flex; justify-content: space-between;">
-                <span>Tổng: \${stats.total} từ</span>
-                \${hasDue ? \`<span style="color: var(--danger-color); font-weight: bold;"><i class="fa-solid fa-clock"></i> Cần ôn: \${stats.due}</span>\` : \`<span style="color: var(--success-color);"><i class="fa-solid fa-check"></i> Đã ôn xong</span>\`}
+                <span>Tổng: ${stats.total} từ</span>
+                ${hasDue ? `<span style="color: var(--danger-color); font-weight: bold;"><i class="fa-solid fa-clock"></i> Cần ôn: ${stats.due}</span>` : `<span style="color: var(--success-color);"><i class="fa-solid fa-check"></i> Đã ôn xong</span>`}
             </div>
-            <button class="btn \${hasDue ? 'btn-primary' : 'btn-outline'} btn-sm" style="margin-top: 15px; width: 100%;" onclick="openFlashcards('\${encodeURIComponent(topic)}')">
+            <button class="btn ${hasDue ? 'btn-primary' : 'btn-outline'} btn-sm" style="margin-top: 15px; width: 100%;" onclick="openFlashcards('${encodeURIComponent(topic)}')">
                 <i class="fa-solid fa-layer-group"></i> Học Chủ Đề Này
             </button>
-        \`;
+        `;
         container.appendChild(card);
     });
 }
@@ -4202,7 +4160,7 @@ window.openFlashcards = function(encodedTopic) {
     }
     
     currentFlashcardIndex = 0;
-    document.getElementById('flashcard-topic-title').innerHTML = \`<i class="fa-solid fa-graduation-cap"></i> \${topic}\`;
+    document.getElementById('flashcard-topic-title').innerHTML = `<i class="fa-solid fa-graduation-cap"></i> ${topic}`;
     document.getElementById('flashcard-modal').classList.add('active');
     
     renderCurrentFlashcard();
@@ -4223,7 +4181,7 @@ function renderCurrentFlashcard() {
     document.getElementById('fc-meaning').textContent = wordObj.meaning;
     document.getElementById('fc-example').textContent = wordObj.example || '';
     
-    document.getElementById('flashcard-progress-text').textContent = \`Từ \${currentFlashcardIndex + 1} / \${currentFlashcards.length}\`;
+    document.getElementById('flashcard-progress-text').textContent = `Từ ${currentFlashcardIndex + 1} / ${currentFlashcards.length}`;
 }
 
 function handleVocabForget(e) {
