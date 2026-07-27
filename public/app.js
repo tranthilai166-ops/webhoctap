@@ -164,6 +164,51 @@ let state = {
     vocabulary: []
 };
 
+// --- AUTHENTICATION HANDLERS ---
+
+/** Handle login */
+window.handleUserLogin = function(event) {
+  if (event) event.preventDefault();
+  const userIdRaw = document.getElementById('login-userid-input')?.value.trim() || '';
+  const password = document.getElementById('login-password-input')?.value || '';
+  const userId = normalizeUserId(userIdRaw);
+  if (!userId) { alert('Vui lòng nhập User ID'); return; }
+  const user = (systemDB.users || []).find(u => u.userId === userId);
+  if (!user) { alert('Người dùng không tồn tại, vui lòng đăng ký.'); return; }
+  if (user.password !== password) { alert('Mật khẩu không đúng.'); return; }
+  currentUser = { userId: user.userId, name: user.name };
+  localStorage.setItem('studyflow_current_user', JSON.stringify(currentUser));
+  const modal = document.getElementById('auth-modal');
+  if (modal) modal.classList.remove('active');
+  const info = document.getElementById('user-info');
+  if (info) info.textContent = `Xin chào, ${user.name}`;
+  if (typeof initApp === 'function') initApp();
+};
+
+/** Handle registration */
+window.handleUserRegister = function(event) {
+  if (event) event.preventDefault();
+  const name = document.getElementById('reg-name-input')?.value.trim() || '';
+  const rawId = document.getElementById('reg-userid-input')?.value.trim() || '';
+  const password = document.getElementById('reg-password-input')?.value || '';
+  const confirm = document.getElementById('reg-confirm-input')?.value || '';
+  const userId = normalizeUserId(rawId);
+  if (!name || !userId) { alert('Vui lòng nhập đầy đủ Họ và Tên và User ID'); return; }
+  if (password.length < 4) { alert('Mật khẩu ít nhất 4 ký tự'); return; }
+  if (password !== confirm) { alert('Mật khẩu xác nhận không khớp'); return; }
+  if ((systemDB.users || []).some(u => u.userId === userId)) { alert('User ID đã tồn tại'); return; }
+  const newUser = { userId, name, password };
+  systemDB.users = [...(systemDB.users || []), newUser];
+  saveSystemDB();
+  currentUser = { userId, name };
+  localStorage.setItem('studyflow_current_user', JSON.stringify(currentUser));
+  const modal = document.getElementById('auth-modal');
+  if (modal) modal.classList.remove('active');
+  const info = document.getElementById('user-info');
+  if (info) info.textContent = `Xin chào, ${name}`;
+  if (typeof initApp === 'function') initApp();
+};
+
 // Live Study Session Overlay State
 let liveStudyState = {
     taskId: null,
