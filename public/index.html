@@ -797,31 +797,6 @@ fa-check-double"></i> Nộp Bài</button>
               </div>
           </div>
       </div>
-  
-      <!-- MODAL: THÊM BÀI TẬP -->
-      <div class="modal-overlay" id="exercise-modal">
-          <div class="modal-card">
-              <div class="modal-header">
-                  <h2 id="exercise-modal-title"><i class="fa-solid fa-pen-ruler"></i> Thêm Bài Tập Mới</h2>
-                  <button class="modal-close-btn" id="btn-close-exercise-modal">&times;</button>
-              </div>
-              <form id="exercise-form">
-                  <input type="hidden" id="exercise-id">
-                  
-                  <div class="form-group">
-                      <label for="exercise-title">Tiêu đề bài tập <span class="text-danger">*</span></label>
-                      <input type="text" id="exercise-title" required placeholder="Ví dụ: Làm bài tập 1, 2, 3 SGK 
-Toán...">
-                  </div>
-  
-                  <div class="form-group">
-                      <label for="exercise-subject-select">Môn học <span class="text-danger">*</span></label>
-                      <select id="exercise-subject-select" required>
-                          <option value="">-- Chọn môn học --</option>
-
-
-
-
     <!-- MODAL: THÊM BÀI TẬP -->
     <div class="modal-overlay" id="exercise-modal">
         <div class="modal-card">
@@ -848,6 +823,12 @@ Toán...">
                     <label for="exercise-due-date">Hạn nộp (Không bắt buộc)</label>
                     <input type="date" id="exercise-due-date">
                 </div>
+
+                <div class="form-group">
+                    <label for="exercise-file-input"><i class="fa-solid fa-paperclip"></i> File đính kèm / Đề bài (Tùy chọn)</label>
+                    <input type="file" id="exercise-file-input" class="form-control" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.txt">
+                    <small id="exercise-file-name" style="display:block; margin-top:5px; color: var(--primary-color); font-weight: 600;"></small>
+                </div>
                 
                 <div class="form-group">
                     <label for="exercise-desc">Ghi chú thêm</label>
@@ -865,3 +846,4 @@ Toán...">
     <script src="app.js"></script>
 </body>
 </html>
+

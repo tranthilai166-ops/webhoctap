@@ -3179,7 +3179,12 @@ function openExerciseModal(exercise = null) {
     const modal = document.getElementById('exercise-modal');
     const title = document.getElementById('exercise-modal-title');
     const form = document.getElementById('exercise-form');
+    const fileInput = document.getElementById('exercise-file-input');
+    const fileNameDisplay = document.getElementById('exercise-file-name');
     
+    if (fileInput) fileInput.value = '';
+    if (fileNameDisplay) fileNameDisplay.textContent = '';
+
     if (exercise) {
         title.innerHTML = '<i class="fa-solid fa-pen-ruler"></i> Chỉnh Sửa Bài Tập';
         document.getElementById('exercise-id').value = exercise.id;
@@ -3187,6 +3192,9 @@ function openExerciseModal(exercise = null) {
         document.getElementById('exercise-subject-select').value = exercise.subjectId || '';
         document.getElementById('exercise-due-date').value = exercise.dueDate || '';
         document.getElementById('exercise-desc').value = exercise.desc || '';
+        if (exercise.attachedFile && fileNameDisplay) {
+            fileNameDisplay.textContent = 'File hiện tại: ' + exercise.attachedFile.name;
+        }
     } else {
         title.innerHTML = '<i class="fa-solid fa-pen-ruler"></i> Thêm Bài Tập Mới';
         form.reset();
@@ -3201,12 +3209,13 @@ function closeExerciseModal() {
     if (modal) modal.classList.remove('active');
 }
 
-function saveExercise() {
+async function saveExercise() {
     const id = document.getElementById('exercise-id').value;
     const title = document.getElementById('exercise-title').value.trim();
     const subjectId = document.getElementById('exercise-subject-select').value;
     const dueDate = document.getElementById('exercise-due-date').value;
     const desc = document.getElementById('exercise-desc').value.trim();
+    const fileInput = document.getElementById('exercise-file-input');
 
     if (!title || !subjectId) {
         alert('Vui lòng nhập đầy đủ Tiêu đề và Môn học!');
@@ -3215,6 +3224,30 @@ function saveExercise() {
 
     if (!state.exercises) state.exercises = [];
 
+    let attachedFile = null;
+    if (fileInput && fileInput.files && fileInput.files[0]) {
+        const file = fileInput.files[0];
+        if (file.size > 3 * 1024 * 1024) {
+            alert('File đính kèm không vượt quá 3MB!');
+            return;
+        }
+        try {
+            const dataUrl = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+            attachedFile = {
+                name: file.name,
+                type: file.type,
+                data: dataUrl
+            };
+        } catch (err) {
+            console.error('Lỗi đọc file:', err);
+        }
+    }
+
     if (id) {
         const ex = state.exercises.find(e => e.id === id);
         if (ex) {
@@ -3222,9 +3255,10 @@ function saveExercise() {
             ex.subjectId = subjectId;
             ex.dueDate = dueDate;
             ex.desc = desc;
+            if (attachedFile) ex.attachedFile = attachedFile;
         }
     } else {
-        state.exercises.push({
+        const newEx = {
             id: 'ex-' + Date.now(),
             title,
             subjectId,
@@ -3232,7 +3266,9 @@ function saveExercise() {
             desc,
             completed: false,
             createdAt: new Date().toISOString()
-        });
+        };
+        if (attachedFile) newEx.attachedFile = attachedFile;
+        state.exercises.unshift(newEx);
     }
 
     saveUserData();
@@ -3324,6 +3360,13 @@ function renderExercises() {
         card.className = `task-item ${ex.completed ? 'completed' : ''}`;
         
         const dueText = ex.dueDate ? `<span class="task-date"><i class="fa-solid fa-clock"></i> Hạn nộp: ${ex.dueDate}</span>` : '';
+        const fileLink = ex.attachedFile ? `
+            <div style="margin-top: 6px;">
+                <a href="${ex.attachedFile.data}" download="${ex.attachedFile.name}" target="_blank" class="btn btn-outline" style="padding: 3px 10px; font-size: 0.8rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 5px;">
+                    <i class="fa-solid fa-paperclip"></i> ${ex.attachedFile.name}
+                </a>
+            </div>
+        ` : '';
         
         card.innerHTML = `
             <div class="task-checkbox ${ex.completed ? 'checked' : ''}" onclick="toggleExerciseComplete('${ex.id}')">
@@ -3332,7 +3375,8 @@ function renderExercises() {
             <div class="task-content">
                 <h4 class="task-title" style="text-decoration: ${ex.completed ? 'line-through' : 'none'}">${ex.title}</h4>
                 ${ex.desc ? `<p class="task-desc" style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">${ex.desc}</p>` : ''}
-                <div class="task-meta">
+                ${fileLink}
+                <div class="task-meta" style="margin-top: 6px;">
                     <span class="task-subject" style="background: ${subj.color}20; color: ${subj.color}"><i class="fa-solid fa-tag"></i> ${subj.name}</span>
                     ${dueText}
                 </div>
@@ -3562,11 +3606,9 @@ async function callGeminiToGenerateQuiz(text, topic) {
     if (generateModels.length === 0) {
         generateModels = [
             'gemini-2.0-flash', 
-            'gemini-1.5-flash-latest', 
+            'gemini-1.5-flash', 
             'gemini-1.5-pro',
-            'gemini-pro',
-            'gemini-2.5-flash',
-            'gemini-3.0-flash'
+            'gemini-2.0-flash-lite'
         ];
     } else {
         // Ưu tiên flash, sau đó là pro
