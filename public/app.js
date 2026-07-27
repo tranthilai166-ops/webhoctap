@@ -3903,6 +3903,8 @@ function initVocabularySystem() {
     if (btnCancelImport) btnCancelImport.addEventListener('click', () => document.getElementById('import-vocab-modal').classList.remove('active'));
     
     if (btnStartImport) btnStartImport.addEventListener('click', startVocabImport);
+    const btnOpenConfigVocab = document.getElementById('btn-open-ai-config-vocab');
+    if (btnOpenConfigVocab) btnOpenConfigVocab.addEventListener('click', openAiConfigModal);
     
     if (uploadZone && fileInput) {
         uploadZone.addEventListener('click', () => fileInput.click());
