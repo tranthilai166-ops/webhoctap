@@ -3513,37 +3513,47 @@ async function extractTextFromPDF(file) {
 }
 
 async function callGeminiToGenerateQuiz(text, topic) {
+    let generateModels = [];
+    
     // 1. Fetch available models dynamically
-    let validModelName = 'gemini-1.5-flash'; // default fallback
     try {
         const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${geminiApiKey}`;
         const listRes = await fetch(listUrl);
         if (listRes.ok) {
             const listData = await listRes.json();
             if (listData.models && listData.models.length > 0) {
-                // Filter models that support generateContent
-                const generateModels = listData.models.filter(m => 
+                // Lọc các model hỗ trợ generateContent và chứa chữ gemini
+                generateModels = listData.models.filter(m => 
                     m.supportedGenerationMethods && 
                     m.supportedGenerationMethods.includes('generateContent') &&
                     m.name.includes('gemini')
-                );
-                
-                if (generateModels.length > 0) {
-                    // Try to prefer a 1.5 flash or 2.0 flash model
-                    let bestModel = generateModels.find(m => m.name.includes('flash'));
-                    if (!bestModel) bestModel = generateModels.find(m => m.name.includes('pro'));
-                    if (!bestModel) bestModel = generateModels[0];
-                    
-                    // The API returns name as "models/gemini-1.5-flash"
-                    validModelName = bestModel.name.replace('models/', '');
-                }
+                ).map(m => m.name.replace('models/', ''));
             }
         }
     } catch (err) {
-        console.warn('Could not fetch model list, using default fallback.', err);
+        console.warn('Không lấy được danh sách model, dùng danh sách mặc định.', err);
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${validModelName}:generateContent?key=${geminiApiKey}`;
+    // Danh sách dự phòng nếu không tải được từ API
+    if (generateModels.length === 0) {
+        generateModels = [
+            'gemini-2.0-flash', 
+            'gemini-1.5-flash-latest', 
+            'gemini-1.5-pro',
+            'gemini-pro',
+            'gemini-2.5-flash',
+            'gemini-3.0-flash'
+        ];
+    } else {
+        // Ưu tiên flash, sau đó là pro
+        generateModels.sort((a, b) => {
+            let scoreA = a.includes('flash') ? 2 : (a.includes('pro') ? 1 : 0);
+            let scoreB = b.includes('flash') ? 2 : (b.includes('pro') ? 1 : 0);
+            return scoreB - scoreA;
+        });
+    }
+
+    let lastError = null;
     
     const prompt = `Bạn là một hệ thống bóc tách và tạo bài tập trắc nghiệm thông minh. Dựa vào nội dung tài liệu tôi cung cấp dưới đây, hãy tạo ra danh sách các câu hỏi trắc nghiệm khách quan (tối đa 30 câu).
 ${topic ? "YÊU CẦU THÊM TỪ HỌC SINH: " + topic : ""}
@@ -3570,33 +3580,53 @@ ${text}
 """
     `.trim();
 
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-                temperature: 0.2
+    // 2. Thử từng model cho đến khi thành công
+    for (let modelName of generateModels) {
+        try {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${geminiApiKey}`;
+            
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: {
+                        temperature: 0.2
+                    }
+                })
+            });
+            
+            if(!response.ok) {
+                const err = await response.json();
+                throw new Error(err.error?.message || 'Lỗi kết nối Gemini API.');
             }
-        })
-    });
-    
-    if(!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error?.message || 'Lỗi kết nối Gemini API. Hãy kiểm tra lại API Key!');
+            
+            const data = await response.json();
+            let resText = data.candidates[0].content.parts[0].text;
+            
+            // Clean up markdown block if any
+            resText = resText.replace(/^\s*```json/i, '').replace(/```\s*$/, '').trim();
+            
+            try {
+                return JSON.parse(resText);
+            } catch (e) {
+                throw new Error("AI trả về kết quả không đúng định dạng JSON.");
+            }
+        } catch (err) {
+            lastError = err;
+            const msg = err.message.toLowerCase();
+            // Bỏ qua model nếu bị các lỗi liên quan đến deprecation hoặc unsupported
+            if (msg.includes('not found') || msg.includes('not supported') || msg.includes('no longer available') || msg.includes('deprecated') || msg.includes('unavailable')) {
+                console.warn(`Model ${modelName} bị từ chối (${err.message}), đang thử model khác...`);
+                continue;
+            } else {
+                // Nếu là lỗi parse JSON hoặc lỗi API key không đúng, ném lỗi luôn
+                throw err;
+            }
+        }
     }
     
-    const data = await response.json();
-    let resText = data.candidates[0].content.parts[0].text;
-    
-    // Clean up markdown block if any
-    resText = resText.replace(/^\s*```json/i, '').replace(/```\s*$/, '').trim();
-    
-    try {
-        return JSON.parse(resText);
-    } catch (e) {
-        throw new Error("AI trả về kết quả không đúng định dạng. Vui lòng thử lại!");
-    }
+    throw new Error(`Đã thử tất cả các mô hình AI nhưng không thành công. Lỗi cuối cùng: ${lastError?.message}`);
 }
 
 function renderTakeQuizModal(quizArray) {
