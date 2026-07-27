@@ -3339,7 +3339,7 @@ function renderExercises() {
             </div>
             <div class="task-actions">
                 ${ex.isQuiz ? `<button class="btn btn-primary" style="padding: 5px 12px; font-size: 0.85rem; border-radius: 6px; margin-right: 5px;" onclick="openQuizExercise('${ex.id}')"><i class="fa-solid fa-play"></i> Làm bài</button>` : ''}
-                <button class="icon-btn edit" onclick='openExerciseModal(${JSON.stringify(ex).replace(/'/g, "&#39;")})' title="Sửa"><i class="fa-solid fa-pen"></i></button>
+                <button class="icon-btn edit" onclick="openExerciseModal(state.exercises.find(e => e.id === '${ex.id}'))" title="Sửa"><i class="fa-solid fa-pen"></i></button>
                 <button class="icon-btn danger" onclick="deleteExercise('${ex.id}')" title="Xóa"><i class="fa-solid fa-trash"></i></button>
             </div>
         `;
@@ -3495,7 +3495,7 @@ async function startAiGeneration() {
                 isQuiz: true,
                 quizData: generatedQuiz
             };
-            state.exercises.push(quizEx);
+            state.exercises.unshift(quizEx);
             saveUserData();
             renderExercises();
             
