@@ -4002,7 +4002,7 @@ async function startVocabImport() {
         
         progressText.textContent = 'Đang kết nối AI để bóc tách từ vựng (khoảng 5-15 giây)...';
 
-        const generateModels = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+        const generateModels = ['gemini-flash-latest', 'gemini-3.6-flash', 'gemini-flash-lite-latest', 'gemini-3.5-flash', 'gemini-2.0-flash'];
         const promptText = "Bạn là hệ thống AI bóc tách từ vựng tiếng Anh chuyên nghiệp. Dựa vào hình ảnh/tài liệu đính kèm" + 
             (extractedText ? " và nội dung văn bản sau:\n" + extractedText : "") + 
             ", hãy tìm và trích xuất TẤT CẢ các từ vựng tiếng Anh xuất hiện kèm theo nghĩa tiếng Việt chuẩn xác nhất.\n\n" +
