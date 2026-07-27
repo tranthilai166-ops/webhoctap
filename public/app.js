@@ -3943,13 +3943,14 @@ function initVocabularySystem() {
 }
 
 async function startVocabImport() {
-    if(!geminiApiKey) {
-        alert('Vui lòng vào tab Bài Tập, bấm Tạo Quiz Bằng AI để nhập API Key trước khi sử dụng tính năng AI này!');
+    if (!geminiApiKey) {
+        openAiConfigModal();
+        alert('Vui lòng nhập Google Gemini API Key (miễn phí) để sử dụng tính năng bóc tách từ vựng!');
         return;
     }
     const fileInput = document.getElementById('vocab-file-input');
-    if(!fileInput.files || fileInput.files.length === 0) {
-        alert('Vui lòng chọn hoặc kéo thả 1 file tài liệu (PDF, Excel, hoặc Ảnh)!');
+    if (!fileInput.files || fileInput.files.length === 0) {
+        alert('Vui lòng chọn hoặc kéo thả 1 file tài liệu (Hình ảnh, PDF, TXT) vào ô!');
         return;
     }
     const file = fileInput.files[0];
@@ -3964,7 +3965,22 @@ async function startVocabImport() {
         progressText.textContent = 'Đang đọc nội dung file...';
         
         let base64String = '';
-        let mimeType = file.type;
+        let mimeType = file.type || 'image/png';
+        let extractedText = '';
+
+        const fileNameLower = file.name.toLowerCase();
+
+        if (fileNameLower.endsWith('.pdf')) {
+            mimeType = 'application/pdf';
+            try {
+                extractedText = await extractTextFromPDF(file);
+            } catch (e) {
+                console.warn('PDF text extraction error:', e);
+            }
+        } else if (fileNameLower.endsWith('.txt')) {
+            mimeType = 'text/plain';
+            extractedText = await file.text();
+        }
 
         const base64Data = await new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -3973,64 +3989,107 @@ async function startVocabImport() {
             reader.readAsDataURL(file);
         });
         
-        mimeType = base64Data.split(';')[0].split(':')[1];
-        base64String = base64Data.split(',')[1];
-        
-        progressText.textContent = 'AI đang bóc tách và tự động chia nhóm từ vựng (khoảng 5-15 giây)...';
-        
-        let generateModels = ['gemini-2.0-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
-        const prompt = `Bạn là hệ thống bóc tách từ vựng tiếng Anh. Dựa vào file tôi đính kèm (có thể là PDF, hình ảnh, văn bản hoặc Excel), hãy trích xuất TẤT CẢ từ vựng tiếng Anh xuất hiện trong file cùng với nghĩa tiếng Việt của chúng.
+        if (typeof base64Data === 'string' && base64Data.includes(';base64,')) {
+            mimeType = base64Data.split(';')[0].split(':')[1] || mimeType;
+            base64String = base64Data.split(',')[1];
+        } else {
+            base64String = String(base64Data);
+        }
 
-Quy tắc gom nhóm (CỰC KỲ QUAN TRỌNG):
-1. Phân loại từ vựng vào các chủ đề (topic) rõ ràng (VD: "School", "Technology", "Animals").
-2. Nếu các từ không thuộc chủ đề rõ ràng nào, hãy tự động gom chúng thành các nhóm nhỏ (VD: "Từ vựng chung - Phần 1", "Từ vựng chung - Phần 2"), MỖI NHÓM ĐÚNG 10 TỪ. 
+        if (fileNameLower.endsWith('.png')) mimeType = 'image/png';
+        else if (fileNameLower.endsWith('.jpg') || fileNameLower.endsWith('.jpeg')) mimeType = 'image/jpeg';
+        else if (fileNameLower.endsWith('.webp')) mimeType = 'image/webp';
+        
+        progressText.textContent = 'Đang kết nối AI để bóc tách từ vựng (khoảng 5-15 giây)...';
 
-Hãy trả về DUY NHẤT một mảng JSON (không có markdown json hoặc giải thích thêm) theo đúng cấu trúc sau:
-[
-  {
-    "word": "apple",
-    "meaning": "quả táo",
-    "example": "I eat an apple.",
-    "topic": "Từ vựng chung - Phần 1"
-  }
-]`.trim();
+        let generateModels = [];
+        try {
+            const listUrl = "https://generativelanguage.googleapis.com/v1beta/models?key=" + geminiApiKey;
+            const listRes = await fetch(listUrl);
+            if (listRes.ok) {
+                const listData = await listRes.json();
+                if (listData.models && listData.models.length > 0) {
+                    generateModels = listData.models
+                        .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent') && m.name.includes('gemini'))
+                        .map(m => m.name.replace('models/', ''));
+                }
+            } else if (listRes.status === 400 || listRes.status === 403) {
+                const errJson = await listRes.json().catch(() => ({}));
+                throw new Error(errJson.error?.message || 'API Key Gemini không hợp lệ hoặc bị từ chối!');
+            }
+        } catch (err) {
+            console.warn('Không lấy được danh sách model:', err);
+            if (err.message.includes('API Key')) throw err;
+        }
+
+        if (generateModels.length === 0) {
+            generateModels = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+        } else {
+            generateModels.sort((a, b) => {
+                let scoreA = a.includes('flash') ? 2 : (a.includes('pro') ? 1 : 0);
+                let scoreB = b.includes('flash') ? 2 : (b.includes('pro') ? 1 : 0);
+                return scoreB - scoreA;
+            });
+        }
+        
+        const promptText = "Bạn là hệ thống AI bóc tách từ vựng tiếng Anh chuyên nghiệp. Dựa vào hình ảnh/tài liệu đính kèm" + 
+            (extractedText ? " và nội dung văn bản sau:\n" + extractedText : "") + 
+            ", hãy tìm và trích xuất TẤT CẢ các từ vựng tiếng Anh xuất hiện kèm theo nghĩa tiếng Việt chuẩn xác nhất.\n\n" +
+            "Quy tắc gom nhóm:\n" +
+            "1. Phân loại từ vựng vào các chủ đề (topic) rõ ràng (Ví dụ: \"School\", \"Technology\", \"Animals\", \"Work\").\n" +
+            "2. Nếu các từ không thuộc chủ đề rõ ràng nào, hãy tự động gom chúng thành các nhóm nhỏ (VD: \"Từ vựng chung - Phần 1\", \"Từ vựng chung - Phần 2\"), MỖI NHÓM ĐÚNG 10 TỪ.\n\n" +
+            "Hãy trả về DUY NHẤT một mảng JSON (không chứa markdown codeblock hoặc giải thích thêm) theo đúng cấu trúc mẫu sau:\n" +
+            "[\n  {\n    \"word\": \"apple\",\n    \"meaning\": \"quả táo\",\n    \"example\": \"I eat an apple.\",\n    \"topic\": \"Từ vựng chung - Phần 1\"\n  }\n]";
 
         let resJson = null;
+        let lastError = null;
+
         for (let modelName of generateModels) {
             try {
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${geminiApiKey}`;
+                const url = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + geminiApiKey;
+                
+                const parts = [{ text: promptText }];
+                if (base64String) {
+                    parts.push({
+                        inlineData: {
+                            mimeType: mimeType,
+                            data: base64String
+                        }
+                    });
+                }
+
                 const response = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        contents: [{
-                            parts: [
-                                { text: prompt },
-                                {
-                                    inlineData: {
-                                        mimeType: mimeType,
-                                        data: base64String
-                                    }
-                                }
-                            ]
-                        }],
+                        contents: [{ parts: parts }],
                         generationConfig: { temperature: 0.2 }
                     })
                 });
                 
-                if(!response.ok) continue;
+                if (!response.ok) {
+                    const errData = await response.json().catch(() => ({}));
+                    throw new Error(errData.error?.message || ("HTTP " + response.status + ": " + response.statusText));
+                }
                 
                 const data = await response.json();
-                let resText = data.candidates[0].content.parts[0].text;
-                resText = resText.replace(/```json/gi, '').replace(/```/g, '').trim(); const jsonMatch = resText.match(/\[[\s\S]*\]/); resText = jsonMatch ? jsonMatch[0] : resText;
-                resJson = JSON.parse(resText);
-                break;
+                let resText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (!resText) throw new Error('AI trả về nội dung rỗng');
+                
+                resText = resText.replace(new RegExp(b + b + b + 'json', 'gi'), '').replace(new RegExp(b + b + b, 'g'), '').trim();
+                const jsonMatch = resText.match(/\[[\s\S]*\]/);
+                resJson = JSON.parse(jsonMatch ? jsonMatch[0] : resText);
+                
+                if (Array.isArray(resJson) && resJson.length > 0) {
+                    break;
+                }
             } catch (err) {
-                console.warn(modelName + " failed", err);
+                console.warn(modelName + " failed:", err);
+                lastError = err;
             }
         }
         
-        if(resJson && Array.isArray(resJson) && resJson.length > 0) {
+        if (resJson && Array.isArray(resJson) && resJson.length > 0) {
             if (!state.vocabulary) state.vocabulary = [];
             
             resJson.forEach(item => {
@@ -4049,9 +4108,9 @@ Hãy trả về DUY NHẤT một mảng JSON (không có markdown json hoặc gi
             saveUserData();
             document.getElementById('import-vocab-modal').classList.remove('active');
             renderVocabTopics();
-            alert(`Đã nhập thành công ${resJson.length} từ vựng mới!`);
+            alert("🎉 Đã nhập thành công " + resJson.length + " từ vựng mới!");
         } else {
-            throw new Error('AI không tìm thấy từ vựng nào hoặc định dạng file chưa được hỗ trợ tốt.');
+            throw new Error(lastError ? lastError.message : 'AI không tìm thấy từ vựng nào trong file bạn đã tải lên.');
         }
     } catch (err) {
         alert('Lỗi: ' + err.message);
