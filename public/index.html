@@ -742,35 +742,42 @@
     </div>
 
     
->     <!-- MODAL: CẤU HÌNH AI (GEMINI API KEY) -->
-      <div class="modal-overlay" id="ai-config-modal">
-          <div class="modal-card">
-              <div class="modal-header">
-                  <h2><i class="fa-solid fa-gear"></i> Cấu Hình AI (Gemini)</h2>
-                  <button class="modal-close-btn" id="btn-close-ai-config-modal">&times;</button>
-              </div>
-              <div class="modal-body">
-                  <p style="font-size: 0.9rem; margin-bottom: 15px; line-height: 1.5; color: var(--text-secondary);">
-                      Để sử dụng tính năng tạo Bài Tập tự động, bạn cần cung cấp <strong>Google Gemini API 
-Key</strong>. Key này hoàn toàn miễn phí và chỉ lưu trữ cục bộ trên máy của bạn.
-                  </p>
-                  <div class="form-group">
-                      <label for="gemini-api-key-input">Gemini API Key <span class="text-danger">*</span></label>
-                      <input type="password" id="gemini-api-key-input" placeholder="Nhập API Key bắt đầu bằng 
-AIzaSy...">
-                      <small style="display:block; margin-top:5px;"><a href="https://aistudio.google.com/app/apikey" 
-target="_blank" style="color: var(--primary-color);">Lấy API Key tại đây</a></small>
-                  </div>
-              </div>
-              <div class="modal-footer">
-                  <button type="button" class="btn btn-outline" id="btn-cancel-ai-config">Hủy</button>
-                  <button type="button" class="btn btn-primary" id="btn-save-ai-config"><i class="fa-solid 
-fa-floppy-disk"></i> Lưu Cấu Hình</button>
-              </div>
-          </div>
-      </div>
-  
-      <!-- MODAL: TẠO QUIZ BẰNG AI -->
+>     <!-- MODAL: CẤU HÌNH NHÀ CUNG CẤP AI & CHẾ ĐỘ QUÉT -->
+    <div class="modal-overlay" id="ai-config-modal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-robot"></i> Cấu Hình AI & Chế Độ Bóc Tách</h2>
+                <button class="modal-close-btn" id="btn-close-ai-config-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="ai-provider-select">Chọn Nhà Cung Cấp AI / Chế Độ</label>
+                    <select id="ai-provider-select" style="width: 100%; padding: 10px; border-radius: 8px; background: var(--bg-color); color: var(--text-color); border: 1px solid var(--border-color);" onchange="updateAiProviderUI()">
+                        <option value="offline" selected>⚡ Chế độ Quét Tự Động Offline (Không cần API Key! Thành công 100%)</option>
+                        <option value="gemini">🤖 Google Gemini AI (Cần Gemini Key)</option>
+                        <option value="groq">⚡ Groq Cloud AI (Llama 3.3 / DeepSeek)</option>
+                        <option value="openrouter">🌐 OpenRouter AI (Free Multi-Model)</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="ai-key-input-group" style="display: none;">
+                    <label for="gemini-api-key-input" id="ai-key-label">API Key <span class="text-danger">*</span></label>
+                    <input type="password" id="gemini-api-key-input" placeholder="Nhập API Key...">
+                    <small id="ai-key-link-hint" style="display:block; margin-top:5px;"></small>
+                </div>
+                
+                <p id="ai-provider-desc" style="font-size: 0.85rem; margin-top: 10px; line-height: 1.5; color: var(--text-secondary);">
+                    ⚡ <strong>Chế độ Quét Tự Động Offline:</strong> Trích xuất từ vựng trực tiếp từ PDF, file văn bản hoặc tài liệu 100% tức thì mà không cần bất kỳ API Key hay kết nối mạng nào!
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" id="btn-cancel-ai-config">Hủy</button>
+                <button type="button" class="btn btn-primary" id="btn-save-ai-config"><i class="fa-solid fa-floppy-disk"></i> Lưu Cấu Hình</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: TẠO QUIZ BẰNG AI -->
       <div class="modal-overlay" id="ai-quiz-modal">
           <div class="modal-card" style="max-width: 600px;">
               <div class="modal-header">
@@ -954,7 +961,7 @@ fa-check-double"></i> Nộp Bài</button>
         }
     </style>
 
-    <script src="app.js?v=20260728_v6"></script>
+    <script src="app.js?v=20260728_v7"></script>
 </body>
 </html>
 

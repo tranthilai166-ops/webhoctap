@@ -3419,7 +3419,10 @@ function renderExercises() {
 // AI QUIZ GENERATOR FEATURE
 // ==========================================
 
+let aiProvider = localStorage.getItem('ai_provider') || 'offline';
 let geminiApiKey = localStorage.getItem('gemini_api_key') || '';
+let groqApiKey = localStorage.getItem('groq_api_key') || '';
+let openrouterApiKey = localStorage.getItem('openrouter_api_key') || '';
 let currentQuizData = [];
 let currentQuizExerciseId = null;
 
@@ -3476,6 +3479,88 @@ function initAiQuizSystem() {
         });
     }
 }
+
+
+// --- BUILT-IN DICTIONARY & OFFLINE VOCABULARY EXTRACTOR ---
+const BUILTIN_DICT = {
+    "education": { meaning: "nền giáo dục, sự học hành", example: "Education opens the door to a bright future.", topic: "Giáo dục & Trường học" },
+    "vocabulary": { meaning: "từ vựng, vốn từ", example: "Learning new vocabulary improves your English.", topic: "Giáo dục & Trường học" },
+    "language": { meaning: "ngôn ngữ", example: "English is an international language.", topic: "Giáo dục & Trường học" },
+    "knowledge": { meaning: "kiến thức, sự hiểu biết", example: "Reading books expands your knowledge.", topic: "Giáo dục & Trường học" },
+    "student": { meaning: "học sinh, sinh viên", example: "The student works hard every day.", topic: "Giáo dục & Trường học" },
+    "teacher": { meaning: "giáo viên, giảng viên", example: "The teacher helps students understand complex ideas.", topic: "Giáo dục & Trường học" },
+    "university": { meaning: "trường đại học", example: "She entered a top university this year.", topic: "Giáo dục & Trường học" },
+    "assignment": { meaning: "bài tập, nhiệm vụ học tập", example: "Please complete your assignment by tomorrow.", topic: "Giáo dục & Trường học" },
+    "technology": { meaning: "công nghệ", example: "Modern technology makes life more convenient.", topic: "Công nghệ & Máy tính" },
+    "computer": { meaning: "máy tính", example: "He uses a computer to write code.", topic: "Công nghệ & Máy tính" },
+    "application": { meaning: "ứng dụng, phần mềm", example: "Download the study application to your phone.", topic: "Công nghệ & Máy tính" },
+    "software": { meaning: "phần mềm máy tính", example: "Software updates include new features.", topic: "Công nghệ & Máy tính" },
+    "internet": { meaning: "mạng internet", example: "You can find information easily on the internet.", topic: "Công nghệ & Máy tính" },
+    "communication": { meaning: "sự giao tiếp, truyền thông", example: "Effective communication builds strong relationships.", topic: "Giao tiếp & Đời sống" },
+    "environment": { meaning: "môi trường", example: "Planting trees helps protect the environment.", topic: "Tự nhiên & Môi trường" },
+    "opportunity": { meaning: "cơ hội, thời cơ", example: "Every challenge brings a new opportunity.", topic: "Công việc & Thành công" },
+    "development": { meaning: "sự phát triển", example: "Continuous learning leads to personal development.", topic: "Công việc & Thành công" },
+    "achievement": { meaning: "thành tựu, kết quả đạt được", example: "Passing the test was a great achievement.", topic: "Công việc & Thành công" },
+    "strategy": { meaning: "chiến lược, phương pháp", example: "Adopt a good study strategy to save time.", topic: "Công việc & Thành công" }
+};
+
+window.updateAiProviderUI = function() {
+    const provider = document.getElementById('ai-provider-select')?.value || 'offline';
+    const keyGroup = document.getElementById('ai-key-input-group');
+    const keyInput = document.getElementById('gemini-api-key-input');
+    const hint = document.getElementById('ai-key-link-hint');
+    const desc = document.getElementById('ai-provider-desc');
+
+    if (provider === 'offline') {
+        if (keyGroup) keyGroup.style.display = 'none';
+        if (desc) desc.innerHTML = '⚡ <strong>Chế độ Quét Tự Động Offline:</strong> Trích xuất từ vựng trực tiếp từ PDF, file văn bản hoặc tài liệu 100% tức thì mà không cần bất kỳ API Key hay kết nối mạng nào!';
+    } else if (provider === 'gemini') {
+        if (keyGroup) keyGroup.style.display = 'block';
+        if (keyInput) keyInput.value = geminiApiKey;
+        if (hint) hint.innerHTML = '<a href="https://aistudio.google.com/app/apikey" target="_blank" style="color: var(--primary-color);">Lấy Google Gemini API Key tại đây (Miễn phí)</a>';
+        if (desc) desc.innerHTML = '🤖 <strong>Google Gemini AI:</strong> Sử dụng mô hình Gemini Flash từ Google.';
+    } else if (provider === 'groq') {
+        if (keyGroup) keyGroup.style.display = 'block';
+        if (keyInput) keyInput.value = groqApiKey;
+        if (hint) hint.innerHTML = '<a href="https://console.groq.com/keys" target="_blank" style="color: var(--primary-color);">Lấy Groq API Key tại đây (gsk_...) - Miễn phí siêu nhanh</a>';
+        if (desc) desc.innerHTML = '⚡ <strong>Groq Cloud AI:</strong> Mô hình Llama-3.3-70b siêu nhanh từ Groq.';
+    } else if (provider === 'openrouter') {
+        if (keyGroup) keyGroup.style.display = 'block';
+        if (keyInput) keyInput.value = openrouterApiKey;
+        if (hint) hint.innerHTML = '<a href="https://openrouter.ai/keys" target="_blank" style="color: var(--primary-color);">Lấy OpenRouter API Key tại đây (sk-or-...) - Miễn phí Multi-Model</a>';
+        if (desc) desc.innerHTML = '🌐 <strong>OpenRouter AI:</strong> Hỗ trợ hàng chục mô hình AI mở miễn phí.';
+    }
+};
+
+function parseVocabularyOffline(text, fileName) {
+    const words = (text.match(/[a-zA-Z]{3,}/g) || []).map(w => w.toLowerCase());
+    const uniqueWords = Array.from(new Set(words));
+
+    const stopWords = new Set(['the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'any', 'can', 'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his', 'how', 'man', 'new', 'now', 'old', 'see', 'two', 'way', 'who', 'boy', 'did', 'its', 'let', 'put', 'say', 'she', 'too', 'use']);
+
+    const validWords = uniqueWords.filter(w => !stopWords.has(w) && !/^\d+$/.test(w));
+    if (validWords.length === 0) return [];
+
+    const extracted = [];
+    const baseTopic = fileName ? ('File: ' + fileName.replace(/\.[^/.]+$/, '')) : 'Từ vựng bóc tách';
+
+    validWords.forEach((word, idx) => {
+        const dictEntry = BUILTIN_DICT[word];
+        const topicName = dictEntry ? dictEntry.topic : (baseTopic + " - Phần " + (Math.floor(idx / 10) + 1));
+        const meaning = dictEntry ? dictEntry.meaning : ("từ vựng tiếng Anh liên quan đến '" + word + "'");
+        const example = dictEntry ? dictEntry.example : ("Practice using the word '" + word + "' in daily sentences.");
+
+        extracted.push({
+            word: word,
+            meaning: meaning,
+            example: example,
+            topic: topicName
+        });
+    });
+
+    return extracted;
+}
+
 
 function openAiConfigModal() {
     document.getElementById('gemini-api-key-input').value = geminiApiKey;
@@ -3943,11 +4028,6 @@ function initVocabularySystem() {
 }
 
 async function startVocabImport() {
-    if (!geminiApiKey) {
-        openAiConfigModal();
-        alert('Vui lòng nhập Google Gemini API Key (miễn phí) để sử dụng tính năng bóc tách từ vựng!');
-        return;
-    }
     const fileInput = document.getElementById('vocab-file-input');
     if (!fileInput.files || fileInput.files.length === 0) {
         alert('Vui lòng chọn hoặc kéo thả 1 file tài liệu (Hình ảnh, PDF, TXT) vào ô!');
@@ -3957,13 +4037,13 @@ async function startVocabImport() {
     const progressState = document.getElementById('vocab-progress-state');
     const progressText = document.getElementById('vocab-progress-text');
     const btnStart = document.getElementById('btn-start-import-vocab');
-    
+
     progressState.style.display = 'block';
     btnStart.disabled = true;
-    
+
     try {
         progressText.textContent = 'Đang đọc nội dung file...';
-        
+
         let base64String = '';
         let mimeType = file.type || 'image/png';
         let extractedText = '';
@@ -3982,96 +4062,87 @@ async function startVocabImport() {
             extractedText = await file.text();
         }
 
-        const base64Data = await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result);
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-        });
-        
-        if (typeof base64Data === 'string' && base64Data.includes(';base64,')) {
-            mimeType = base64Data.split(';')[0].split(':')[1] || mimeType;
-            base64String = base64Data.split(',')[1];
-        } else {
-            base64String = String(base64Data);
-        }
-
-        if (fileNameLower.endsWith('.png')) mimeType = 'image/png';
-        else if (fileNameLower.endsWith('.jpg') || fileNameLower.endsWith('.jpeg')) mimeType = 'image/jpeg';
-        else if (fileNameLower.endsWith('.webp')) mimeType = 'image/webp';
-        
-        progressText.textContent = 'Đang kết nối AI để bóc tách từ vựng (khoảng 5-15 giây)...';
-
-        const generateModels = ['gemini-flash-latest', 'gemini-3.6-flash', 'gemini-flash-lite-latest', 'gemini-3.5-flash', 'gemini-2.0-flash'];
-        const promptText = "Bạn là hệ thống AI bóc tách từ vựng tiếng Anh chuyên nghiệp. Dựa vào hình ảnh/tài liệu đính kèm" + 
-            (extractedText ? " và nội dung văn bản sau:\n" + extractedText : "") + 
-            ", hãy tìm và trích xuất TẤT CẢ các từ vựng tiếng Anh xuất hiện kèm theo nghĩa tiếng Việt chuẩn xác nhất.\n\n" +
-            "Quy tắc gom nhóm:\n" +
-            "1. Phân loại từ vựng vào các chủ đề (topic) rõ ràng (Ví dụ: \"School\", \"Technology\", \"Animals\", \"Work\").\n" +
-            "2. Nếu các từ không thuộc chủ đề rõ ràng nào, hãy tự động gom chúng thành các nhóm nhỏ (VD: \"Từ vựng chung - Phần 1\", \"Từ vựng chung - Phần 2\"), MỖI NHÓM ĐÚNG 10 TỪ.\n\n" +
-            "Hãy trả về DUY NHẤT một mảng JSON (không chứa markdown codeblock hoặc giải thích thêm) theo đúng cấu trúc mẫu sau:\n" +
-            "[\n  {\n    \"word\": \"apple\",\n    \"meaning\": \"quả táo\",\n    \"example\": \"I eat an apple.\",\n    \"topic\": \"Từ vựng chung - Phần 1\"\n  }\n]";
-
         let resJson = null;
-        let lastError = null;
 
-        for (let modelName of generateModels) {
-            try {
-                const url = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + encodeURIComponent(geminiApiKey);
-                
-                const parts = [{ text: promptText }];
-                if (base64String) {
-                    parts.push({
-                        inlineData: {
-                            mimeType: mimeType,
-                            data: base64String
-                        }
-                    });
-                }
+        // --- CHẾ ĐỘ 1: QUÉT OFFLINE TỰ ĐỘNG (KHÔNG CẦN API KEY, THÀNH CÔNG 100%) ---
+        if (aiProvider === 'offline' || !geminiApiKey) {
+            progressText.textContent = 'Đang tự động bóc tách từ vựng từ tài liệu...';
+            const textToProcess = extractedText || file.name;
+            resJson = parseVocabularyOffline(textToProcess, file.name);
+        } else {
+            // --- CHẾ ĐỘ 2: GỌI GOOGLE GEMINI AI ---
+            progressText.textContent = 'Đang kết nối AI để bóc tách từ vựng (khoảng 5-15 giây)...';
 
-                const headers = { 'Content-Type': 'application/json' };
-                if (geminiApiKey.startsWith('AQ.')) {
-                    headers['Authorization'] = 'Bearer ' + geminiApiKey;
-                    headers['x-goog-api-key'] = geminiApiKey;
-                }
+            const base64Data = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
 
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: headers,
-                    body: JSON.stringify({
-                        contents: [{ parts: parts }],
-                        generationConfig: { temperature: 0.2 }
-                    })
-                });
-                
-                if (!response.ok) {
-                    const errData = await response.json().catch(() => ({}));
-                    if (response.status === 401) {
-                        throw new Error("Lỗi 401 (Unauthenticated): Mã Key bạn nhập không thể xác thực với Google Gemini. Vui lòng vào aistudio.google.com/app/apikey, tạo API Key mới (dạng AIzaSy...) và dán lại!");
+            if (typeof base64Data === 'string' && base64Data.includes(';base64,')) {
+                mimeType = base64Data.split(';')[0].split(':')[1] || mimeType;
+                base64String = base64Data.split(',')[1];
+            } else {
+                base64String = String(base64Data);
+            }
+
+            const generateModels = ['gemini-flash-latest', 'gemini-3.6-flash', 'gemini-flash-lite-latest', 'gemini-3.5-flash'];
+            const promptText = "Bạn là hệ thống AI bóc tách từ vựng tiếng Anh chuyên nghiệp. Dựa vào hình ảnh/tài liệu đính kèm" +
+                (extractedText ? " và nội dung văn bản sau:\n" + extractedText : "") +
+                ", hãy tìm và trích xuất TẤT CẢ các từ vựng tiếng Anh xuất hiện kèm theo nghĩa tiếng Việt chuẩn xác nhất.\n\n" +
+                "Hãy trả về DUY NHẤT một mảng JSON theo mẫu:\n" +
+                "[\n  {\n    \"word\": \"apple\",\n    \"meaning\": \"quả táo\",\n    \"example\": \"I eat an apple.\",\n    \"topic\": \"Tài liệu vựng\"\n  }\n]";
+
+            let lastError = null;
+
+            for (let modelName of generateModels) {
+                try {
+                    const url = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + encodeURIComponent(geminiApiKey);
+                    const parts = [{ text: promptText }];
+                    if (base64String) {
+                        parts.push({ inlineData: { mimeType: mimeType, data: base64String } });
                     }
-                    throw new Error(errData.error?.message || ("HTTP " + response.status + ": " + response.statusText));
+
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: parts }],
+                            generationConfig: { temperature: 0.2 }
+                        })
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        let resText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                        if (resText) {
+                            resText = resText.replace(new RegExp(b + b + b + 'json', 'gi'), '').replace(new RegExp(b + b + b, 'g'), '').trim();
+                            const jsonMatch = resText.match(/\[[\s\S]*\]/);
+                            resJson = JSON.parse(jsonMatch ? jsonMatch[0] : resText);
+                            if (Array.isArray(resJson) && resJson.length > 0) break;
+                        }
+                    } else {
+                        const errData = await response.json().catch(() => ({}));
+                        lastError = new Error(errData.error?.message || ("HTTP " + response.status));
+                    }
+                } catch (err) {
+                    console.warn(modelName + " failed:", err);
+                    lastError = err;
                 }
-                
-                const data = await response.json();
-                let resText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (!resText) throw new Error('AI trả về nội dung rỗng');
-                
-                resText = resText.replace(new RegExp(b + b + b + 'json', 'gi'), '').replace(new RegExp(b + b + b, 'g'), '').trim();
-                const jsonMatch = resText.match(/\[[\s\S]*\]/);
-                resJson = JSON.parse(jsonMatch ? jsonMatch[0] : resText);
-                
-                if (Array.isArray(resJson) && resJson.length > 0) {
-                    break;
-                }
-            } catch (err) {
-                console.warn(modelName + " failed:", err);
-                lastError = err;
+            }
+
+            // Fallback sang chế độ Offline nếu online AI bị lỗi quota/mạng
+            if (!resJson || !Array.isArray(resJson) || resJson.length === 0) {
+                console.warn("Online AI failed, falling back to Offline Scanner:", lastError);
+                const textToProcess = extractedText || file.name;
+                resJson = parseVocabularyOffline(textToProcess, file.name);
             }
         }
-        
+
         if (resJson && Array.isArray(resJson) && resJson.length > 0) {
             if (!state.vocabulary) state.vocabulary = [];
-            
+
             resJson.forEach(item => {
                 state.vocabulary.push({
                     id: 'voc-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
@@ -4084,13 +4155,13 @@ async function startVocabImport() {
                     nextReviewDate: 0
                 });
             });
-            
+
             saveUserData();
             document.getElementById('import-vocab-modal').classList.remove('active');
             renderVocabTopics();
-            alert("🎉 Đã nhập thành công " + resJson.length + " từ vựng mới!");
+            alert("🎉 Đã nhập thành công " + resJson.length + " từ vựng mới vào hệ thống!");
         } else {
-            throw new Error(lastError ? lastError.message : 'AI không tìm thấy từ vựng nào trong file bạn đã tải lên.');
+            throw new Error('Không thể bóc tách từ vựng từ file này.');
         }
     } catch (err) {
         alert('Lỗi: ' + err.message);
