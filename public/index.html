@@ -753,7 +753,8 @@
                 <div class="form-group">
                     <label for="ai-provider-select">Chọn Nhà Cung Cấp AI / Chế Độ</label>
                     <select id="ai-provider-select" style="width: 100%; padding: 10px; border-radius: 8px; background: var(--bg-color); color: var(--text-color); border: 1px solid var(--border-color);" onchange="updateAiProviderUI()">
-                        <option value="offline" selected>⚡ Chế độ Quét Tự Động Offline (Không cần API Key! Thành công 100%)</option>
+                        <option value="openai">✨ ChatGPT (Cấu hình OPENAI_API_KEY trên server)</option>
+                        <option value="offline">⚡ Chế độ Quét Tự Động Offline (Không cần API Key! Thành công 100%)</option>
                         <option value="gemini">🤖 Google Gemini AI (Cần Gemini Key)</option>
                         <option value="groq">⚡ Groq Cloud AI (Llama 3.3 / DeepSeek)</option>
                         <option value="openrouter">🌐 OpenRouter AI (Free Multi-Model)</option>
@@ -794,7 +795,7 @@ margin-bottom: 10px;"></i>
                       <p id="ai-quiz-file-name" style="margin-top: 10px; font-weight: 600; color: 
 var(--primary-color);"></p>
                       <small style="color: var(--text-secondary);">Hệ thống sẽ bóc tách câu hỏi có sẵn hoặc tự tạo tối đa 30 câu trắc nghiệm</small>
-                      <input type="file" id="ai-quiz-file-input" accept=".pdf,.txt" style="display: none;">
+                      <input type="file" id="ai-quiz-file-input" accept=".pdf,.txt,.png,.jpg,.jpeg,.webp" style="display: none;">
                   </div>
                   
                   <div class="form-group">
@@ -961,7 +962,7 @@ fa-check-double"></i> Nộp Bài</button>
         }
     </style>
 
-    <script src="app.js?v=20260728_v7"></script>
+    <script src="app.js?v=20260728_v8"></script>
 </body>
 </html>
 

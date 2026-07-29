@@ -159,3 +159,15 @@ phía trong ít giây.
   đọc/ghi dữ liệu của người đó. Phù hợp để demo/dự án cá nhân, nhưng nếu công khai
   cho nhiều người dùng thật, nên thêm xác thực (session/token) cho các route
   `/api/user-data/*`.
+## Cấu hình ChatGPT tạo bài tập
+
+Đặt biến môi trường trên server/Railway rồi khởi động lại:
+
+```text
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini
+```
+
+Trong mục **Bài Tập & Luyện Tập → Tạo Quiz Bằng AI**, chọn **ChatGPT**. Hệ thống nhận PDF, TXT và ảnh; tự tạo câu 4 đáp án hoặc Đúng/Sai, lưu đáp án/giải thích, và hiển thị tài liệu nguồn trong màn hình làm bài.
+
+Không đặt API key trong `public/app.js` hoặc localStorage của trình duyệt.

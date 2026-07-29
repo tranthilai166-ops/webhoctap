@@ -3419,7 +3419,7 @@ function renderExercises() {
 // AI QUIZ GENERATOR FEATURE
 // ==========================================
 
-let aiProvider = localStorage.getItem('ai_provider') || 'offline';
+let aiProvider = localStorage.getItem('ai_provider') || 'openai';
 let geminiApiKey = localStorage.getItem('gemini_api_key') || '';
 let groqApiKey = localStorage.getItem('groq_api_key') || '';
 let openrouterApiKey = localStorage.getItem('openrouter_api_key') || '';
@@ -3514,6 +3514,9 @@ window.updateAiProviderUI = function() {
     if (provider === 'offline') {
         if (keyGroup) keyGroup.style.display = 'none';
         if (desc) desc.innerHTML = '⚡ <strong>Chế độ Quét Tự Động Offline:</strong> Trích xuất từ vựng trực tiếp từ PDF, file văn bản hoặc tài liệu 100% tức thì mà không cần bất kỳ API Key hay kết nối mạng nào!';
+    } else if (provider === 'openai') {
+        if (keyGroup) keyGroup.style.display = 'none';
+        if (desc) desc.innerHTML = '✨ <strong>ChatGPT:</strong> API key được giữ an toàn trên server. Có thể đọc văn bản và hình ảnh, tạo câu 4 đáp án hoặc Đúng/Sai.';
     } else if (provider === 'gemini') {
         if (keyGroup) keyGroup.style.display = 'block';
         if (keyInput) keyInput.value = geminiApiKey;
@@ -3533,43 +3536,103 @@ window.updateAiProviderUI = function() {
 };
 
 function parseVocabularyOffline(text, fileName) {
-    const words = (text.match(/[a-zA-Z]{3,}/g) || []).map(w => w.toLowerCase());
-    const uniqueWords = Array.from(new Set(words));
-
-    const stopWords = new Set(['the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'any', 'can', 'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his', 'how', 'man', 'new', 'now', 'old', 'see', 'two', 'way', 'who', 'boy', 'did', 'its', 'let', 'put', 'say', 'she', 'too', 'use']);
-
-    const validWords = uniqueWords.filter(w => !stopWords.has(w) && !/^\d+$/.test(w));
-    if (validWords.length === 0) return [];
-
-    const extracted = [];
+    if (!text || typeof text !== 'string') return [];
+    
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+    const result = [];
     const baseTopic = fileName ? ('File: ' + fileName.replace(/\.[^/.]+$/, '')) : 'Từ vựng bóc tách';
+    const seenWords = new Set();
 
-    validWords.forEach((word, idx) => {
-        const dictEntry = BUILTIN_DICT[word];
-        const topicName = dictEntry ? dictEntry.topic : (baseTopic + " - Phần " + (Math.floor(idx / 10) + 1));
-        const meaning = dictEntry ? dictEntry.meaning : ("từ vựng tiếng Anh liên quan đến '" + word + "'");
-        const example = dictEntry ? dictEntry.example : ("Practice using the word '" + word + "' in daily sentences.");
+    // 1. Line-by-Line Table & Pair Parser (Matches English word + Vietnamese meaning)
+    lines.forEach(line => {
+        // Skip header rows
+        if (/^(từ vựng|tiếng anh|stt|nghĩa|word|meaning|translation|stt\t|stt,)/i.test(line)) return;
 
-        extracted.push({
-            word: word,
-            meaning: meaning,
-            example: example,
-            topic: topicName
-        });
+        // Try delimiters: Tab, Comma, Semicolon, Colon, Hyphen, Pipe, or Space separation
+        let word = '', meaning = '';
+
+        if (line.includes('\t')) {
+            const parts = line.split('\t').map(p => p.trim());
+            if (parts.length >= 2) { word = parts[0]; meaning = parts[1]; }
+        } else if (line.includes(';')) {
+            const parts = line.split(';').map(p => p.trim());
+            if (parts.length >= 2) { word = parts[0]; meaning = parts[1]; }
+        } else if (line.includes(',')) {
+            const parts = line.split(',').map(p => p.trim());
+            if (parts.length >= 2) { word = parts[0]; meaning = parts[1]; }
+        } else if (line.includes(':')) {
+            const parts = line.split(':').map(p => p.trim());
+            if (parts.length >= 2) { word = parts[0]; meaning = parts[1]; }
+        } else if (line.includes(' - ')) {
+            const parts = line.split(' - ').map(p => p.trim());
+            if (parts.length >= 2) { word = parts[0]; meaning = parts[1]; }
+        } else if (line.includes('|')) {
+            const parts = line.split('|').map(p => p.trim());
+            if (parts.length >= 2) { word = parts[0]; meaning = parts[1]; }
+        } else {
+            // Space-separated English word/phrase followed by Vietnamese meaning
+            const match = line.match(/^([a-zA-Z\s\-']+?)\s+([àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđA-Za-z0-9\s\(\),\-\/.]+)/i);
+            if (match) {
+                word = match[1].trim();
+                meaning = match[2].trim();
+            }
+        }
+
+        // Clean up extracted word and meaning
+        word = word.replace(/^[0-9]+\.\s*/, '').trim();
+        meaning = meaning.trim();
+
+        const wordLower = word.toLowerCase();
+
+        if (word && meaning && /[a-zA-Z]{2,}/.test(word) && !seenWords.has(wordLower)) {
+            seenWords.add(wordLower);
+            result.push({
+                word: word,
+                meaning: meaning,
+                example: "Practice using '" + word + "' in your daily sentences.",
+                topic: baseTopic + ' - Phần ' + (Math.floor(result.length / 10) + 1)
+            });
+        }
     });
 
-    return extracted;
+    // 2. Fallback: If no structured pairs were found, use word frequency & dictionary
+    if (result.length === 0) {
+        const words = (text.match(/[a-zA-Z]{3,}/g) || []).map(w => w.toLowerCase());
+        const uniqueWords = Array.from(new Set(words));
+        const stopWords = new Set(['the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'any', 'can', 'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his', 'how', 'man', 'new', 'now', 'old', 'see', 'two', 'way', 'who', 'boy', 'did', 'its', 'let', 'put', 'say', 'she', 'too', 'use']);
+
+        const validWords = uniqueWords.filter(w => !stopWords.has(w) && !/^\d+$/.test(w));
+        validWords.forEach((w, idx) => {
+            const dictEntry = BUILTIN_DICT[w];
+            result.push({
+                word: w,
+                meaning: dictEntry ? dictEntry.meaning : ("nghĩa từ vựng '" + w + "'"),
+                example: dictEntry ? dictEntry.example : ("Practice using '" + w + "' in daily sentences."),
+                topic: baseTopic + ' - Phần ' + (Math.floor(result.length / 10) + 1)
+            });
+        });
+    }
+
+    return result;
 }
 
-
 function openAiConfigModal() {
+    document.getElementById('ai-provider-select').value = aiProvider;
     document.getElementById('gemini-api-key-input').value = geminiApiKey;
+    updateAiProviderUI();
     document.getElementById('ai-config-modal').classList.add('active');
 }
 function closeAiConfigModal() {
     document.getElementById('ai-config-modal').classList.remove('active');
 }
 function saveAiConfig() {
+    aiProvider = document.getElementById('ai-provider-select').value;
+    localStorage.setItem('ai_provider', aiProvider);
+    if (aiProvider === 'openai') {
+        alert('Đã chọn ChatGPT. Hãy đặt OPENAI_API_KEY trong biến môi trường của server rồi khởi động lại web.');
+        closeAiConfigModal();
+        return;
+    }
     const key = document.getElementById('gemini-api-key-input').value.trim();
     if(!key) {
         alert('Vui lòng nhập API Key!');
@@ -3582,7 +3645,7 @@ function saveAiConfig() {
 }
 
 function openAiQuizModal() {
-    if(!geminiApiKey) {
+    if(aiProvider !== 'openai' && aiProvider !== 'offline' && !geminiApiKey) {
         openAiConfigModal();
         return;
     }
@@ -3602,7 +3665,7 @@ async function startAiGeneration() {
     const topic = document.getElementById('ai-quiz-topic-input').value.trim();
     
     if(!fileInput.files || fileInput.files.length === 0) {
-        alert('Vui lòng chọn hoặc kéo thả 1 file tài liệu (PDF hoặc TXT) vào ô trống!');
+        alert('Vui lòng chọn hoặc kéo thả file PDF, TXT hoặc ảnh vào ô trống!');
         return;
     }
     const file = fileInput.files[0];
@@ -3616,7 +3679,7 @@ async function startAiGeneration() {
     try {
         progressText.textContent = 'Đang đọc nội dung file...';
         
-        // Read file as base64 for Gemini inlineData and for saving
+        // Đọc file để lưu lại làm minh họa và gửi ảnh/text cho AI.
         const base64Data = await new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = () => resolve(reader.result);
@@ -3630,7 +3693,24 @@ async function startAiGeneration() {
         
         progressText.textContent = 'AI đang phân tích tài liệu và tạo bài trắc nghiệm (sẽ mất khoảng 5-15 giây)...';
         
-        const generatedQuiz = await callGeminiToGenerateQuiz(base64String, mimeType, topic);
+        let generatedQuiz;
+        if (aiProvider === 'openai') {
+            let extractedText = '';
+            let imageDataUrls = [];
+            if (file.name.toLowerCase().endsWith('.pdf')) extractedText = await extractTextFromPDF(file);
+            else if (file.name.toLowerCase().endsWith('.txt')) extractedText = await file.text();
+            if (file.name.toLowerCase().endsWith('.pdf')) imageDataUrls = await renderPDFPagesForAI(file);
+            const response = await fetch('/api/ai/generate-quiz', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dataUrl: /^data:image\//i.test(base64Data) ? base64Data : '', imageDataUrls, extractedText, topic, fileName: file.name })
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(result.error === 'openai_not_configured' ? 'Server chưa cấu hình OPENAI_API_KEY.' : (result.error || 'Không thể gọi ChatGPT.'));
+            generatedQuiz = result.questions;
+        } else {
+            generatedQuiz = await callGeminiToGenerateQuiz(base64String, mimeType, topic);
+        }
         
         if(generatedQuiz && generatedQuiz.length > 0) {
             closeAiQuizModal();
@@ -3638,7 +3718,7 @@ async function startAiGeneration() {
             if (!state.exercises) state.exercises = [];
             const quizEx = {
                 id: 'ex-' + Date.now(),
-                title: 'Trắc nghiệm AI: ' + (file.name || 'Tài liệu mới'),
+            title: 'Trắc nghiệm ' + (aiProvider === 'openai' ? 'ChatGPT: ' : 'AI: ') + (file.name || 'Tài liệu mới'),
                 subjectId: state.subjects[0]?.id || '', // Default to first subject
                 dueDate: new Date().toISOString().split('T')[0],
                 desc: topic || 'Bài tập tạo tự động từ tài liệu.',
@@ -3846,23 +3926,28 @@ function renderTakeQuizModal(quizArray, ex) {
     const container = document.getElementById('quiz-questions-container');
     container.innerHTML = '';
     
-    // Hiển thị hình ảnh minh họa nếu file đính kèm là ảnh
-    if (ex && ex.attachedFile && ex.attachedFile.data.startsWith('data:image/')) {
+    // Hiển thị tài liệu nguồn ngay đầu bài để người học đối chiếu khi làm.
+    if (ex && ex.attachedFile && ex.attachedFile.data) {
         const imgHeader = document.createElement('div');
-        imgHeader.style.marginBottom = '20px';
-        imgHeader.style.textAlign = 'center';
-        imgHeader.innerHTML = `
-            <p style="font-weight: bold; margin-bottom: 10px;">Hình ảnh tài liệu đính kèm:</p>
-            <img src="${ex.attachedFile.data}" style="max-width: 100%; max-height: 400px; border-radius: 8px; border: 1px solid var(--border-color);">
-        `;
+        imgHeader.className = 'quiz-source-preview';
+        const label = document.createElement('p');
+        label.textContent = 'Tài liệu minh họa: ' + (ex.attachedFile.name || 'tài liệu nguồn');
+        const isImage = ex.attachedFile.data.startsWith('data:image/');
+        const media = document.createElement(isImage ? 'img' : 'iframe');
+        media.src = ex.attachedFile.data;
+        media.className = isImage ? 'quiz-source-image' : 'quiz-source-pdf';
+        media.setAttribute('title', 'Tài liệu nguồn');
+        imgHeader.append(label, media);
         container.appendChild(imgHeader);
     }
     
     quizArray.forEach((q, idx) => {
         const qCard = document.createElement('div');
         qCard.className = 'quiz-question-card';
+        const typeLabel = q.type === 'true_false' ? 'Đúng / Sai' : 'Chọn 1 đáp án';
         qCard.innerHTML = `
-            <div class="quiz-question-title">Câu ${idx + 1}: ${q.question}</div>
+            <div class="quiz-question-meta"><span>Câu ${idx + 1}</span><small>${typeLabel}</small></div>
+            <div class="quiz-question-title">${q.question}</div>
             <div class="quiz-options-list" id="q-opts-${idx}">
                 ${q.options.map((opt, optIdx) => `
                     <div class="quiz-option" data-q="${idx}" data-opt="${optIdx}" onclick="selectQuizOption(this, ${idx}, ${optIdx})">
@@ -4171,6 +4256,23 @@ async function startVocabImport() {
         fileInput.value = '';
         document.getElementById('vocab-file-name').textContent = '';
     }
+}
+
+async function renderPDFPagesForAI(file) {
+    if (typeof pdfjsLib === 'undefined') return [];
+    const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+    const images = [];
+    const numPages = Math.min(pdf.numPages, 5);
+    for (let i = 1; i <= numPages; i++) {
+        const page = await pdf.getPage(i);
+        const viewport = page.getViewport({ scale: 1.25 });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        images.push(canvas.toDataURL('image/jpeg', 0.78));
+    }
+    return images;
 }
 
 function calculateNextReviewDate(currentStage) {

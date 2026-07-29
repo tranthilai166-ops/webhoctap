@@ -10,6 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const { Server } = require('socket.io');
+const OpenAI = require('openai');
 
 const app = express();
 const server = http.createServer(app);
@@ -32,8 +33,86 @@ ensureDirs();
 
 const SYSTEM_DB_PATH = path.join(DATA_DIR, 'system-db.json');
 
-app.use(express.json({ limit: '5mb' }));
+app.use(express.json({ limit: '15mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+/* ---------------- AI QUIZ GENERATION (OpenAI) ---------------- */
+
+function getOpenAIClient() {
+    if (!process.env.OPENAI_API_KEY) return null;
+    return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+}
+
+app.post('/api/ai/generate-quiz', async (req, res) => {
+    const client = getOpenAIClient();
+    if (!client) return res.status(503).json({ ok: false, error: 'openai_not_configured' });
+
+    const { dataUrl, imageDataUrls = [], extractedText = '', topic = '', fileName = '' } = req.body || {};
+    if (!dataUrl && !imageDataUrls.length && !extractedText.trim()) {
+        return res.status(400).json({ ok: false, error: 'missing_input' });
+    }
+
+    const prompt = `Bạn là hệ thống tạo bài tập học tập từ tài liệu đầu vào.
+Hãy đọc kỹ tài liệu, giữ nguyên dữ kiện, công thức, ký hiệu và nội dung trong hình nếu có.
+${fileName ? `Tên tài liệu: ${fileName}` : ''}
+${topic ? `Yêu cầu thêm của người dùng: ${topic}` : ''}
+
+Quy tắc:
+- Nếu tài liệu có câu hỏi và đáp án sẵn, bóc tách chính xác, không tự sửa nội dung.
+- Nếu tài liệu chưa có câu hỏi, tạo 10-20 câu kiểm tra kiến thức quan trọng.
+- Mỗi câu chọn một trong hai dạng: multiple_choice hoặc true_false.
+- multiple_choice bắt buộc có đúng 4 đáp án khác nhau; true_false bắt buộc có options ["Đúng", "Sai"].
+- answer là chỉ số bắt đầu từ 0 của đáp án đúng.
+- explanation giải thích ngắn gọn, dễ hiểu bằng tiếng Việt.
+- Không bịa thông tin không có trong tài liệu. Nếu hình không đủ rõ, nêu điều đó trong explanation và tránh tạo câu hỏi dựa vào phần không đọc được.
+- Trả về JSON thuần theo cấu trúc {"questions":[...]}.
+
+Mỗi câu có dạng:
+{"type":"multiple_choice","question":"...","options":["...","...","...","..."],"answer":0,"explanation":"..."}
+hoặc:
+{"type":"true_false","question":"...","options":["Đúng","Sai"],"answer":0,"explanation":"..."}`;
+
+    const content = [{ type: 'text', text: prompt }];
+    if (extractedText.trim()) content.push({ type: 'text', text: `Nội dung văn bản trích xuất:\n${extractedText.slice(0, 50000)}` });
+    if (dataUrl && /^data:image\/(png|jpeg|jpg|webp);base64,/i.test(dataUrl)) {
+        content.push({ type: 'image_url', image_url: { url: dataUrl } });
+    }
+    imageDataUrls.slice(0, 5).forEach(image => {
+        if (/^data:image\/(png|jpeg|jpg|webp);base64,/i.test(image)) {
+            content.push({ type: 'image_url', image_url: { url: image } });
+        }
+    });
+
+    try {
+        const completion = await client.chat.completions.create({
+            model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+            temperature: 0.2,
+            response_format: { type: 'json_object' },
+            messages: [
+                { role: 'system', content: 'Bạn luôn trả về JSON hợp lệ, không có markdown.' },
+                { role: 'user', content }
+            ]
+        });
+        const parsed = JSON.parse(completion.choices?.[0]?.message?.content || '{}');
+        const questions = Array.isArray(parsed) ? parsed : parsed.questions;
+        if (!Array.isArray(questions) || !questions.length) throw new Error('empty_quiz');
+
+        const normalized = questions.slice(0, 30).map(q => {
+            const type = q.type === 'true_false' ? 'true_false' : 'multiple_choice';
+            const options = type === 'true_false' ? ['Đúng', 'Sai'] : (Array.isArray(q.options) ? q.options.slice(0, 4) : []);
+            if (type === 'multiple_choice' && options.length !== 4) return null;
+            const answer = Number(q.answer);
+            if (!q.question || !Number.isInteger(answer) || answer < 0 || answer >= options.length) return null;
+            return { type, question: String(q.question), options: options.map(String), answer, explanation: String(q.explanation || '') };
+        }).filter(Boolean);
+
+        if (!normalized.length) throw new Error('invalid_quiz');
+        res.json({ ok: true, questions: normalized });
+    } catch (err) {
+        console.error('[OpenAI quiz]', err);
+        res.status(502).json({ ok: false, error: err.message || 'ai_generation_failed' });
+    }
+});
 
 // Chặn ký tự lạ trong userId để tránh path traversal khi ghi file
 function safeUserId(userId) {

@@ -2923,6 +2923,61 @@ input:checked + .slider:before {
     color: var(--text-primary);
 }
 
+.quiz-question-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+    color: var(--primary-color);
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.quiz-question-meta small {
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: var(--primary-color-10);
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.quiz-source-preview {
+    margin-bottom: 20px;
+    padding: 14px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-color);
+    text-align: center;
+}
+
+.quiz-source-preview p {
+    margin: 0 0 10px;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.quiz-source-image,
+.quiz-source-pdf {
+    display: block;
+    width: 100%;
+    max-width: 720px;
+    margin: 0 auto;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: #fff;
+}
+
+.quiz-source-image {
+    max-height: 460px;
+    object-fit: contain;
+}
+
+.quiz-source-pdf {
+    height: 420px;
+}
+
 .quiz-options-list {
     display: flex;
     flex-direction: column;
