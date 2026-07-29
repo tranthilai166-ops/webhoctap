@@ -3781,11 +3781,15 @@ async function callGeminiToGenerateQuiz(base64String, mimeType, topic) {
         if (listRes.ok) {
             const listData = await listRes.json();
             if (listData.models && listData.models.length > 0) {
-                generateModels = listData.models.filter(m => 
-                    m.supportedGenerationMethods && 
-                    m.supportedGenerationMethods.includes('generateContent') &&
-                    m.name.includes('gemini') && !m.name.includes('computer-use') && !m.name.includes('imagen') && !m.name.includes('embedding') && (m.name.includes('flash') || m.name.includes('pro'))
-                ).map(m => m.name.replace('models/', ''));
+                generateModels = listData.models.filter(m => {
+                    const name = (m.name || '').toLowerCase();
+                    const isNonVisualSpecialist = /tts|audio|live|computer-use|imagen|embedding|robotics/.test(name);
+                    return m.supportedGenerationMethods &&
+                        m.supportedGenerationMethods.includes('generateContent') &&
+                        name.includes('gemini') &&
+                        !isNonVisualSpecialist &&
+                        (name.includes('flash') || name.includes('pro'));
+                }).map(m => m.name.replace('models/', ''));
             }
         }
     } catch (err) {
@@ -3874,7 +3878,8 @@ Chú ý: "answer" là index của mảng options (0, 1, 2, 3). Các câu trả l
             if (msg.includes('not found') || msg.includes('not supported') || 
                 msg.includes('no longer available') || msg.includes('deprecated') || 
                 msg.includes('unavailable') || msg.includes('quota') || 
-                msg.includes('exceeded') || msg.includes('limit')) {
+                msg.includes('exceeded') || msg.includes('limit') ||
+                msg.includes('image input modality')) {
                 console.warn(`Model ${modelName} bị từ chối (${err.message}), đang thử model khác...`);
                 continue;
             } else {
