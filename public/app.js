@@ -213,7 +213,30 @@ let subjectPieChartInstance = null;
 let dailyHoursMapChartInstance = null;
 
 // --- INITIALIZATION ---
+function clearRestoredSearchValues() {
+    [
+        'task-search-input',
+        'vocab-search-input',
+        'vocab-manager-search'
+    ].forEach(id => {
+        const input = document.getElementById(id);
+        if (input && input.value) {
+            input.value = '';
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+    });
+}
+
+window.addEventListener('pageshow', () => {
+    // Chrome có thể khôi phục hoặc autofill tên đăng nhập vào ô tìm kiếm sau F5.
+    // Xóa ngay và kiểm tra lại sau một nhịp vì autofill đôi khi chạy trễ.
+    clearRestoredSearchValues();
+    setTimeout(clearRestoredSearchValues, 250);
+});
+
 document.addEventListener('DOMContentLoaded', async () => {
+    clearRestoredSearchValues();
+
     // Tải systemDB (danh sách người dùng, bạn bè, tin nhắn) từ server (volume /date) trước,
     // nếu offline hoặc server chưa có dữ liệu thì dùng bản trong localStorage như cũ.
     // QUAN TRỌNG: KHÔNG được ghi đè thẳng systemDB bằng dữ liệu server, vì nếu server

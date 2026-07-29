@@ -52,6 +52,7 @@ test('health check và trang web hoạt động', async () => {
     assert.match(page, /id="btn-add-vocab-manual"/);
     assert.match(page, /id="vocab-manager-modal"/);
     assert.match(page, /id="vocab-confirm-modal"/);
+    assert.match(page, /id="task-search-input"[^>]+autocomplete="off"/);
 });
 
 test('đăng ký, đăng nhập và bảo vệ mật khẩu', async () => {

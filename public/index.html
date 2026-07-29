@@ -274,7 +274,9 @@
                     <div class="task-filters-bar">
                         <div class="search-box">
                             <i class="fa-solid fa-magnifying-glass"></i>
-                            <input type="text" id="task-search-input" placeholder="Tìm kiếm nhiệm vụ học tập...">
+                            <input type="search" id="task-search-input" name="studyflow-task-filter"
+                                placeholder="Tìm kiếm nhiệm vụ học tập..." autocomplete="off"
+                                autocapitalize="off" spellcheck="false">
                         </div>
                         <div class="filter-group">
                             <select id="filter-status">
@@ -485,7 +487,9 @@
                         <div class="vocab-tools-row">
                             <div class="vocab-search-box">
                                 <i class="fa-solid fa-magnifying-glass"></i>
-                                <input type="search" id="vocab-search-input" placeholder="Tìm từ, nghĩa, ví dụ hoặc chủ đề...">
+                                <input type="search" id="vocab-search-input" name="studyflow-vocabulary-filter"
+                                    placeholder="Tìm từ, nghĩa, ví dụ hoặc chủ đề..." autocomplete="off"
+                                    autocapitalize="off" spellcheck="false">
                             </div>
                             <select id="vocab-status-filter" aria-label="Lọc trạng thái từ vựng">
                                 <option value="all">Tất cả trạng thái</option>
@@ -1022,7 +1026,9 @@ fa-check-double"></i> Nộp Bài</button>
                 <div class="vocab-manager-filters">
                     <div class="vocab-search-box">
                         <i class="fa-solid fa-magnifying-glass"></i>
-                        <input type="search" id="vocab-manager-search" placeholder="Tìm trong kho từ...">
+                        <input type="search" id="vocab-manager-search" name="studyflow-vocabulary-manager-filter"
+                            placeholder="Tìm trong kho từ..." autocomplete="off"
+                            autocapitalize="off" spellcheck="false">
                     </div>
                     <select id="vocab-manager-topic-filter" aria-label="Lọc chủ đề">
                         <option value="all">Tất cả chủ đề</option>
@@ -1106,7 +1112,7 @@ fa-check-double"></i> Nộp Bài</button>
         }
     </style>
 
-    <script src="app.js?v=20260729_v10"></script>
+    <script src="app.js?v=20260729_v11"></script>
 </body>
 </html>
 
