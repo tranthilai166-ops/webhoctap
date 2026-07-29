@@ -45,6 +45,123 @@ function getOpenAIClient() {
     return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 }
 
+function getOpenAIErrorDetails(err) {
+    const status = Number(err?.status || err?.response?.status || 0);
+    const code = String(err?.code || err?.error?.code || err?.response?.data?.error?.code || '').toLowerCase();
+    const message = String(err?.message || err?.error?.message || '').toLowerCase();
+
+    const quotaExceeded = status === 429 && (
+        code === 'insufficient_quota' ||
+        message.includes('exceeded your current quota') ||
+        message.includes('billing') ||
+        message.includes('quota')
+    );
+    if (quotaExceeded) {
+        return {
+            status: 429,
+            body: {
+                ok: false,
+                error: 'openai_quota_exceeded',
+                message: 'OpenAI API đã hết hạn mức sử dụng. Hãy kiểm tra số dư và giới hạn chi tiêu trong trang Billing của OpenAI.',
+                retryable: false
+            }
+        };
+    }
+
+    if (status === 429) {
+        return {
+            status: 429,
+            body: {
+                ok: false,
+                error: 'openai_rate_limited',
+                message: 'OpenAI đang giới hạn tốc độ yêu cầu. Vui lòng chờ một lúc rồi thử lại.',
+                retryable: true
+            }
+        };
+    }
+
+    if (status === 401 || code === 'invalid_api_key') {
+        return {
+            status: 401,
+            body: {
+                ok: false,
+                error: 'openai_invalid_api_key',
+                message: 'OPENAI_API_KEY trên máy chủ không hợp lệ hoặc đã bị thu hồi.',
+                retryable: false
+            }
+        };
+    }
+
+    if (status === 403) {
+        return {
+            status: 403,
+            body: {
+                ok: false,
+                error: 'openai_access_denied',
+                message: 'API key hiện không có quyền sử dụng model được cấu hình.',
+                retryable: false
+            }
+        };
+    }
+
+    if (status === 404 || code === 'model_not_found' || message.includes('model_not_found')) {
+        return {
+            status: 400,
+            body: {
+                ok: false,
+                error: 'openai_model_unavailable',
+                message: 'Model OpenAI được cấu hình không tồn tại hoặc tài khoản chưa được cấp quyền.',
+                retryable: false
+            }
+        };
+    }
+
+    if (message === 'empty_quiz' || message === 'invalid_quiz' ||
+        message === 'empty_vocabulary' || message === 'invalid_vocabulary') {
+        return {
+            status: 502,
+            body: {
+                ok: false,
+                error: 'openai_invalid_response',
+                message: 'AI chưa trả về dữ liệu đúng cấu trúc. Vui lòng thử lại với tài liệu rõ hơn.',
+                retryable: true
+            }
+        };
+    }
+
+    return {
+        status: 502,
+        body: {
+            ok: false,
+            error: 'openai_request_failed',
+            message: 'Không thể xử lý yêu cầu bằng OpenAI lúc này. Vui lòng thử lại sau.',
+            retryable: true
+        }
+    };
+}
+
+function shouldRetryOpenAIError(err) {
+    const details = getOpenAIErrorDetails(err);
+    return details.body.error === 'openai_rate_limited' ||
+        Number(err?.status || 0) >= 500 ||
+        ['ECONNRESET', 'ETIMEDOUT'].includes(String(err?.code || '').toUpperCase());
+}
+
+async function runOpenAIWithRetry(operation, maxRetries = 2) {
+    let lastError;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            return await operation();
+        } catch (err) {
+            lastError = err;
+            if (attempt >= maxRetries || !shouldRetryOpenAIError(err)) throw err;
+            const delayMs = 500 * (2 ** attempt) + Math.floor(Math.random() * 250);
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+    }
+    throw lastError;
+}
+
 app.post('/api/ai/generate-quiz', async (req, res) => {
     const client = getOpenAIClient();
     if (!client) return res.status(503).json({ ok: false, error: 'openai_not_configured' });
@@ -86,7 +203,7 @@ hoặc:
     });
 
     try {
-        const completion = await client.chat.completions.create({
+        const completion = await runOpenAIWithRetry(() => client.chat.completions.create({
             model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
             temperature: 0.2,
             response_format: { type: 'json_object' },
@@ -94,7 +211,7 @@ hoặc:
                 { role: 'system', content: 'Bạn luôn trả về JSON hợp lệ, không có markdown.' },
                 { role: 'user', content }
             ]
-        });
+        }));
         const parsed = JSON.parse(completion.choices?.[0]?.message?.content || '{}');
         const questions = Array.isArray(parsed) ? parsed : parsed.questions;
         if (!Array.isArray(questions) || !questions.length) throw new Error('empty_quiz');
@@ -112,7 +229,8 @@ hoặc:
         res.json({ ok: true, questions: normalized });
     } catch (err) {
         console.error('[OpenAI quiz]', err);
-        res.status(502).json({ ok: false, error: err.message || 'ai_generation_failed' });
+        const details = getOpenAIErrorDetails(err);
+        res.status(details.status).json(details.body);
     }
 });
 
@@ -143,7 +261,7 @@ Trả về JSON thuần theo dạng {"vocabulary":[{"word":"...","meaning":"..."
     });
 
     try {
-        const completion = await client.chat.completions.create({
+        const completion = await runOpenAIWithRetry(() => client.chat.completions.create({
             model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
             temperature: 0.1,
             response_format: { type: 'json_object' },
@@ -151,7 +269,7 @@ Trả về JSON thuần theo dạng {"vocabulary":[{"word":"...","meaning":"..."
                 { role: 'system', content: 'Bạn luôn trả về JSON hợp lệ, không có markdown.' },
                 { role: 'user', content }
             ]
-        });
+        }));
         const parsed = JSON.parse(completion.choices?.[0]?.message?.content || '{}');
         const vocabulary = Array.isArray(parsed) ? parsed : parsed.vocabulary;
         if (!Array.isArray(vocabulary) || !vocabulary.length) throw new Error('empty_vocabulary');
@@ -174,7 +292,8 @@ Trả về JSON thuần theo dạng {"vocabulary":[{"word":"...","meaning":"..."
         res.json({ ok: true, vocabulary: normalized });
     } catch (err) {
         console.error('[OpenAI vocabulary]', err);
-        res.status(502).json({ ok: false, error: err.message || 'ai_generation_failed' });
+        const details = getOpenAIErrorDetails(err);
+        res.status(details.status).json(details.body);
     }
 });
 
@@ -580,4 +699,4 @@ server.listen(PORT, () => {
     }
 });
 
-module.exports = { app, server };
+module.exports = { app, server, getOpenAIErrorDetails, shouldRetryOpenAIError };

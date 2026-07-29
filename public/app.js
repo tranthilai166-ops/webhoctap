@@ -213,6 +213,93 @@ let subjectPieChartInstance = null;
 let dailyHoursMapChartInstance = null;
 
 // --- INITIALIZATION ---
+const VALID_APP_TABS = new Set(['dashboard', 'tasks', 'pomodoro', 'subjects', 'exercises', 'vocabulary']);
+
+function getActiveTabStorageKey() {
+    return currentUser ? `studyflow_active_tab_${currentUser.userId}` : '';
+}
+
+function showToast(message, type = 'info', duration = 5200) {
+    const stack = document.getElementById('app-toast-stack');
+    if (!stack || !message) return;
+
+    const normalizedType = ['success', 'warning', 'error'].includes(type) ? type : 'info';
+    const icons = {
+        info: 'fa-circle-info',
+        success: 'fa-circle-check',
+        warning: 'fa-triangle-exclamation',
+        error: 'fa-circle-xmark'
+    };
+    const toast = document.createElement('div');
+    toast.className = `app-toast ${normalizedType}`;
+    toast.setAttribute('role', normalizedType === 'error' ? 'alert' : 'status');
+
+    const icon = document.createElement('i');
+    icon.className = `fa-solid ${icons[normalizedType]}`;
+    icon.setAttribute('aria-hidden', 'true');
+
+    const text = document.createElement('div');
+    text.className = 'app-toast-message';
+    text.textContent = String(message);
+
+    const closeButton = document.createElement('button');
+    closeButton.className = 'app-toast-close';
+    closeButton.type = 'button';
+    closeButton.setAttribute('aria-label', 'Đóng thông báo');
+    closeButton.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
+
+    let removeTimer = null;
+    const removeToast = () => {
+        if (!toast.isConnected || toast.classList.contains('is-leaving')) return;
+        toast.classList.add('is-leaving');
+        setTimeout(() => toast.remove(), 190);
+    };
+    closeButton.addEventListener('click', removeToast);
+    toast.append(icon, text, closeButton);
+    stack.prepend(toast);
+
+    while (stack.children.length > 4) {
+        stack.lastElementChild?.remove();
+    }
+    if (duration > 0) removeTimer = setTimeout(removeToast, duration);
+    toast.addEventListener('mouseenter', () => clearTimeout(removeTimer));
+    toast.addEventListener('mouseleave', () => {
+        if (duration > 0) removeTimer = setTimeout(removeToast, 1800);
+    });
+}
+
+function setInlineFeedback(elementId, message = '', type = 'error') {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+    if (!message) {
+        element.textContent = '';
+        element.className = 'inline-feedback';
+        return;
+    }
+    const normalizedType = ['success', 'warning'].includes(type) ? type : 'error';
+    element.textContent = message;
+    element.className = `inline-feedback active ${normalizedType}`;
+}
+
+function createAiRequestError(result = {}, status = 0) {
+    const code = String(result.error || '');
+    const messages = {
+        openai_not_configured: 'Máy chủ chưa cấu hình OPENAI_API_KEY. Hãy thêm key trên Railway rồi triển khai lại.',
+        openai_quota_exceeded: 'OpenAI API đã hết quota. Hạn mức API tách biệt với gói ChatGPT; hãy kiểm tra Billing hoặc chọn Gemini.',
+        openai_rate_limited: 'OpenAI đang giới hạn tốc độ. Hãy chờ khoảng 20–30 giây rồi thử lại.',
+        openai_invalid_api_key: 'OPENAI_API_KEY không hợp lệ hoặc đã bị thu hồi. Hãy cập nhật key trên máy chủ.',
+        openai_access_denied: 'API key hiện không có quyền sử dụng model được cấu hình.',
+        openai_model_unavailable: 'Model OpenAI được cấu hình không khả dụng cho API key này.',
+        openai_invalid_response: 'AI trả về dữ liệu chưa đúng cấu trúc. Hãy thử lại với tài liệu rõ hơn.',
+        openai_request_failed: 'Không thể kết nối OpenAI lúc này. Hãy thử lại sau hoặc chọn nhà cung cấp khác.'
+    };
+    const error = new Error(messages[code] || result.message || `Yêu cầu AI thất bại${status ? ` (HTTP ${status})` : ''}.`);
+    error.code = code || 'ai_request_failed';
+    error.retryable = Boolean(result.retryable);
+    error.status = status;
+    return error;
+}
+
 function clearRestoredSearchValues() {
     [
         'task-search-input',
@@ -376,6 +463,7 @@ function loadUserData() {
     renderFriendsList();
     renderIncomingRequests();
     startContinuousSystemSync();
+    restoreActiveTab();
 
     // Sau khi hiển thị ngay dữ liệu có sẵn trong localStorage (không bị giật/chờ),
     // thử tải bản mới nhất từ server (volume /date) để đồng bộ giữa các thiết bị.
@@ -433,7 +521,7 @@ window.handleUserRegister = async function(e) {
             feedbackEl.append(icon, document.createTextNode(` ${msg}`));
             feedbackEl.style.display = 'block';
         } else {
-            alert(msg);
+            showToast(msg, isError ? 'error' : 'success');
         }
     }
 
@@ -518,7 +606,7 @@ window.handleUserLogin = async function(e) {
             feedbackEl.append(icon, document.createTextNode(` ${msg}`));
             feedbackEl.style.display = 'block';
         } else {
-            alert(msg);
+            showToast(msg, isError ? 'error' : 'success');
         }
     }
 
@@ -569,12 +657,12 @@ window.handleUserLogin = async function(e) {
     return false;
 };
 
-window.switchTab = function(targetTab) {
+window.switchTab = function(targetTab, persist = true) {
     const navItems = document.querySelectorAll('.nav-item');
     const tabContents = document.querySelectorAll('.tab-content');
     const sidebar = document.querySelector('.sidebar');
 
-    if (!targetTab) return;
+    if (!VALID_APP_TABS.has(targetTab)) targetTab = 'dashboard';
 
     navItems.forEach(n => {
         if (n.getAttribute('data-tab') === targetTab) {
@@ -597,13 +685,25 @@ window.switchTab = function(targetTab) {
         sidebar.classList.remove('mobile-open');
     }
 
-    if (targetTab === 'chat') {
-        renderGroupsList();
-        renderFriendsList();
-        renderIncomingRequests();
-        renderChatMessages();
+    if (persist && currentUser) {
+        localStorage.setItem(getActiveTabStorageKey(), targetTab);
     }
+
+    if (targetTab === 'dashboard') renderDashboard();
+    else if (targetTab === 'tasks') renderTasksPage();
+    else if (targetTab === 'subjects') renderSubjects();
+    else if (targetTab === 'pomodoro') renderPomodoroTasksDropdown();
+    else if (targetTab === 'exercises') {
+        renderExercises();
+        updatePendingExerciseCount();
+    } else if (targetTab === 'vocabulary') renderVocabTopics();
 };
+
+function restoreActiveTab() {
+    const storageKey = getActiveTabStorageKey();
+    const savedTab = storageKey ? localStorage.getItem(storageKey) : '';
+    switchTab(VALID_APP_TABS.has(savedTab) ? savedTab : 'dashboard', false);
+}
 
 window.toggleMobileSidebar = function() {
     const sidebar = document.querySelector('.sidebar');
@@ -788,7 +888,7 @@ function initChatSystem() {
     searchForm?.addEventListener('submit', async (e) => {
         e.preventDefault();
         if (!currentUser) {
-            alert('Vui lòng đăng nhập trước khi kết bạn!');
+            showToast('Vui lòng đăng nhập trước khi kết bạn.', 'warning');
             openAuthModal();
             return;
         }
@@ -1326,35 +1426,20 @@ function initMobileSidebar() {
 }
 
 // --- NAVIGATION & TABS ---
+let navigationInitialized = false;
 function initNavigation() {
-    const navItems = document.querySelectorAll('.nav-menu .nav-item');
-    const tabContents = document.querySelectorAll('.tab-content');
-    const sidebar = document.getElementById('sidebar');
+    if (navigationInitialized) return;
+    navigationInitialized = true;
 
-    navItems.forEach(item => {
+    document.querySelectorAll('.nav-menu .nav-item').forEach(item => {
         item.addEventListener('click', () => {
             const targetTab = item.getAttribute('data-tab');
-            if (!targetTab) return;
-            
-            navItems.forEach(nav => nav.classList.remove('active'));
-            tabContents.forEach(content => content.classList.remove('active'));
-
-            item.classList.add('active');
-            const activeTabEl = document.getElementById(`tab-${targetTab}`);
-            if (activeTabEl) activeTabEl.classList.add('active');
-
-            if (sidebar) sidebar.classList.remove('mobile-open');
-
-            if (targetTab === 'dashboard') renderDashboard();
-            else if (targetTab === 'tasks') renderTasksPage();
-            else if (targetTab === 'subjects') renderSubjects();
-            else if (targetTab === 'pomodoro') renderPomodoroTasksDropdown();
-            else if (targetTab === 'chat') { renderFriendsList(); renderIncomingRequests(); }
+            if (targetTab) switchTab(targetTab);
         });
     });
 
     document.getElementById('btn-view-all-tasks')?.addEventListener('click', () => {
-        document.querySelector('.nav-item[data-tab="tasks"]')?.click();
+        switchTab('tasks');
     });
 }
 
@@ -1661,7 +1746,7 @@ function startQuickBreak(minutes) {
                 `00:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
         } else {
             clearInterval(liveStudyState.intervalId);
-            alert('🔔 Hết thời gian nghỉ! Hãy tiếp tục vào học thôi nào!');
+            showToast('Hết thời gian nghỉ! Hãy tiếp tục vào học thôi nào.', 'info', 9000);
             liveStudyState.isBreak = false;
             updateLiveTimerDisplay();
             document.getElementById('live-timer-status').textContent = 'Đã hết thời gian nghỉ! Nhấn "Bắt đầu" để tiếp tục.';
@@ -1718,14 +1803,14 @@ function initDailyCheckin() {
 
 function performDailyCheckin() {
     if (!currentUser) {
-        alert('Vui lòng đăng nhập để điểm danh hàng ngày!');
+        showToast('Vui lòng đăng nhập để điểm danh hàng ngày.', 'warning');
         openAuthModal();
         return;
     }
 
     const todayStr = getFormattedDate(0);
     if (state.lastCheckinDate === todayStr) {
-        alert('Bạn đã điểm danh học tập hôm nay rồi! Tiếp tục giữ vững phong độ nhé 🔥');
+        showToast('Bạn đã điểm danh hôm nay rồi! Tiếp tục giữ vững phong độ nhé 🔥', 'info');
         return;
     }
 
@@ -1776,7 +1861,7 @@ function checkStreakMilestones(streak) {
     saveUserData();
     updateMailboxBadge();
 
-    alert(`📩 BẠN CÓ THƯ MỚI!\nChúc mừng bạn đã đạt mốc ${streak} Ngày Chuỗi Học Tập Liên Tục! Vui lòng mở Hộp Thư để nhận phần thưởng danh hiệu.`);
+    showToast(`Bạn có thư mới!\nChúc mừng bạn đã đạt chuỗi ${streak} ngày học tập. Hãy mở Hộp Thư để nhận danh hiệu.`, 'success', 10000);
     openMailboxModal();
 }
 
@@ -2245,7 +2330,7 @@ function renderSubjects() {
 
 window.deleteSubject = function(subjectId) {
     if (state.subjects.length <= 1) {
-        alert('Bạn cần giữ lại ít nhất 1 môn học!');
+        showToast('Bạn cần giữ lại ít nhất một môn học.', 'warning');
         return;
     }
     if (confirm('Bạn có chắc chắn muốn xóa môn học này?')) {
@@ -2314,7 +2399,7 @@ function startPomodoro() {
             }
         } else {
             pausePomodoro();
-            alert('🎉 Đã hết thời gian! Hãy nghỉ ngơi hoặc bắt đầu phiên mới.');
+            showToast('Đã hết thời gian! Hãy nghỉ ngơi hoặc bắt đầu phiên mới.', 'success', 9000);
             if (typeof confetti === 'function') confetti();
         }
     }, 1000);
@@ -2671,7 +2756,7 @@ function updateCallButtonsVisibility() {
 // --- BẮT ĐẦU GỌI (CALLER) ---
 async function initiateCall(callType) {
     if (callState.inCall) {
-        alert('Bạn đang trong một cuộc gọi khác!');
+        showToast('Bạn đang trong một cuộc gọi khác.', 'warning');
         return;
     }
 
@@ -2720,7 +2805,7 @@ async function initiateCall(callType) {
 
         } catch (err) {
             console.error('Không thể truy cập camera/mic:', err);
-            alert('Không thể truy cập camera hoặc microphone. Vui lòng kiểm tra quyền thiết bị.');
+            showToast('Không thể truy cập camera hoặc microphone. Vui lòng kiểm tra quyền thiết bị.', 'error', 9000);
             cleanupCall();
         }
         return;
@@ -2733,7 +2818,7 @@ async function initiateCall(callType) {
 
     // Kiểm tra online
     if (!onlineUsersList.includes(state.activeChatFriendId)) {
-        alert(`${friend.name} hiện không trực tuyến. Không thể gọi điện.`);
+        showToast(`${friend.name} hiện không trực tuyến. Không thể gọi điện.`, 'warning');
         return;
     }
 
@@ -2777,7 +2862,7 @@ async function initiateCall(callType) {
 
     } catch (err) {
         console.error('Không thể truy cập camera/mic:', err);
-        alert('Không thể truy cập camera hoặc microphone. Vui lòng kiểm tra quyền truy cập của trình duyệt.');
+        showToast('Không thể truy cập camera hoặc microphone. Vui lòng kiểm tra quyền của trình duyệt.', 'error', 9000);
         cleanupCall();
     }
 }
@@ -2858,7 +2943,7 @@ async function acceptIncomingCall() {
 
     } catch (err) {
         console.error('Không thể truy cập camera/mic:', err);
-        alert('Không thể truy cập camera hoặc microphone.');
+        showToast('Không thể truy cập camera hoặc microphone.', 'error');
         socketIO.emit('call-rejected', {
             callerId: data.callerId,
             reason: 'Lỗi thiết bị.'
@@ -2897,7 +2982,7 @@ function handleCallAccepted(data) {
 
 // --- XỬ LÝ KHI CUỘC GỌI BỊ TỪ CHỐI ---
 function handleCallRejected(data) {
-    alert(`Cuộc gọi bị từ chối: ${data.reason || 'Không rõ lý do'}`);
+    showToast(`Cuộc gọi bị từ chối: ${data.reason || 'Không rõ lý do'}`, 'warning');
     cleanupCall();
 }
 
@@ -2908,7 +2993,7 @@ function handleCallEnded(data) {
 
 // --- XỬ LÝ KHI GỌI THẤT BẠI (USER OFFLINE) ---
 function handleCallFailed(data) {
-    alert(data.message || 'Không thể kết nối cuộc gọi.');
+    showToast(data.message || 'Không thể kết nối cuộc gọi.', 'error');
     cleanupCall();
 }
 
@@ -3046,7 +3131,7 @@ function toggleCamera() {
     const videoTracks = localStream.getVideoTracks();
     if (videoTracks.length === 0) {
         // Nếu đang gọi audio → không có video track
-        alert('Cuộc gọi thoại không có camera.');
+        showToast('Cuộc gọi thoại không có camera.', 'info');
         return;
     }
 
@@ -3348,7 +3433,7 @@ async function saveExercise() {
     const fileInput = document.getElementById('exercise-file-input');
 
     if (!title || !subjectId) {
-        alert('Vui lòng nhập đầy đủ Tiêu đề và Môn học!');
+        showToast('Vui lòng nhập đầy đủ tiêu đề và môn học.', 'warning');
         return;
     }
 
@@ -3358,7 +3443,7 @@ async function saveExercise() {
     if (fileInput && fileInput.files && fileInput.files[0]) {
         const file = fileInput.files[0];
         if (file.size > 3 * 1024 * 1024) {
-            alert('File đính kèm không vượt quá 3MB!');
+            showToast('File đính kèm không được vượt quá 3MB.', 'warning');
             return;
         }
         try {
@@ -3746,20 +3831,23 @@ function saveAiConfig() {
     localStorage.setItem('ai_provider', aiProvider);
     if (aiProvider === 'openai') {
         closeAiConfigModal();
+        showToast('Đã chọn ChatGPT. API key sẽ được đọc an toàn từ máy chủ.', 'success');
         return;
     }
     if (aiProvider === 'offline') {
         closeAiConfigModal();
+        showToast('Đã bật chế độ quét từ vựng Offline.', 'success');
         return;
     }
     const key = document.getElementById('gemini-api-key-input').value.trim();
     if(!key) {
-        alert('Vui lòng nhập API Key!');
+        showToast('Vui lòng nhập API Key Gemini.', 'warning');
         return;
     }
     geminiApiKey = key;
     localStorage.setItem('gemini_api_key', key);
     closeAiConfigModal();
+    showToast('Đã lưu cấu hình Gemini trên thiết bị này.', 'success');
 }
 
 function openAiQuizModal() {
@@ -3778,6 +3866,7 @@ function openAiQuizModal() {
     document.getElementById('ai-quiz-topic-input').value = '';
     document.getElementById('ai-quiz-progress-state').style.display = 'none';
     document.getElementById('btn-start-ai-gen').disabled = false;
+    setInlineFeedback('ai-quiz-feedback');
     document.getElementById('ai-quiz-modal').classList.add('active');
 }
 function closeAiQuizModal() {
@@ -3789,7 +3878,9 @@ async function startAiGeneration() {
     const topic = document.getElementById('ai-quiz-topic-input').value.trim();
     
     if(!fileInput.files || fileInput.files.length === 0) {
-        alert('Vui lòng chọn hoặc kéo thả file PDF, TXT hoặc ảnh vào ô trống!');
+        const message = 'Vui lòng chọn hoặc kéo thả file PDF, TXT hoặc ảnh vào ô trống.';
+        setInlineFeedback('ai-quiz-feedback', message, 'warning');
+        showToast(message, 'warning');
         return;
     }
     const file = fileInput.files[0];
@@ -3830,7 +3921,7 @@ async function startAiGeneration() {
                 body: JSON.stringify({ dataUrl: /^data:image\//i.test(base64Data) ? base64Data : '', imageDataUrls, extractedText, topic, fileName: file.name })
             });
             const result = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(result.error === 'openai_not_configured' ? 'Server chưa cấu hình OPENAI_API_KEY.' : (result.error || 'Không thể gọi ChatGPT.'));
+            if (!response.ok) throw createAiRequestError(result, response.status);
             generatedQuiz = result.questions;
         } else {
             generatedQuiz = await callGeminiToGenerateQuiz(base64String, mimeType, topic);
@@ -3858,7 +3949,7 @@ async function startAiGeneration() {
             saveUserData();
             renderExercises();
             
-            alert('Tạo bài tập thành công! Bài kiểm tra đã được lưu vào danh sách Bài Tập của bạn.');
+            showToast('Tạo bài tập thành công! Bài kiểm tra đã được lưu.', 'success');
             
             // Switch to Exercises tab if function exists
             if(typeof switchTab === 'function') switchTab('exercises');
@@ -3869,7 +3960,8 @@ async function startAiGeneration() {
         
     } catch (err) {
         console.error(err);
-        alert('Lỗi: ' + err.message);
+        setInlineFeedback('ai-quiz-feedback', err.message, 'error');
+        showToast(err.message, 'error', 9000);
     } finally {
         progressState.style.display = 'none';
         btnStart.disabled = false;
@@ -4316,7 +4408,10 @@ function initVocabularySystem() {
     const managerSearch = document.getElementById('vocab-manager-search');
     const managerTopicFilter = document.getElementById('vocab-manager-topic-filter');
 
-    if (btnOpenImport) btnOpenImport.addEventListener('click', () => document.getElementById('import-vocab-modal').classList.add('active'));
+    if (btnOpenImport) btnOpenImport.addEventListener('click', () => {
+        setInlineFeedback('vocab-import-feedback');
+        document.getElementById('import-vocab-modal').classList.add('active');
+    });
     if (btnCloseImport) btnCloseImport.addEventListener('click', () => document.getElementById('import-vocab-modal').classList.remove('active'));
     if (btnCancelImport) btnCancelImport.addEventListener('click', () => document.getElementById('import-vocab-modal').classList.remove('active'));
     
@@ -4658,7 +4753,9 @@ function exportVocabularyBackup() {
 async function startVocabImport() {
     const fileInput = document.getElementById('vocab-file-input');
     if (!fileInput.files || fileInput.files.length === 0) {
-        alert('Vui lòng chọn hoặc kéo thả 1 file tài liệu (Hình ảnh, PDF, TXT) vào ô!');
+        const message = 'Vui lòng chọn hoặc kéo thả một file hình ảnh, PDF hoặc TXT.';
+        setInlineFeedback('vocab-import-feedback', message, 'warning');
+        showToast(message, 'warning');
         return;
     }
     const file = fileInput.files[0];
@@ -4668,6 +4765,7 @@ async function startVocabImport() {
 
     progressState.style.display = 'block';
     btnStart.disabled = true;
+    setInlineFeedback('vocab-import-feedback');
 
     try {
         progressText.textContent = 'Đang đọc nội dung file...';
@@ -4690,6 +4788,7 @@ async function startVocabImport() {
         }
 
         let resJson = null;
+        let fallbackNotice = '';
 
         // ChatGPT xử lý được cả chữ, hình và các trang PDF đã render.
         if (aiProvider === 'openai') {
@@ -4703,12 +4802,20 @@ async function startVocabImport() {
             });
             const result = await response.json().catch(() => ({}));
             if (!response.ok) {
-                const message = result.error === 'openai_not_configured'
-                    ? 'Server chưa cấu hình OPENAI_API_KEY.'
-                    : (result.error || 'Không thể phân tích tài liệu bằng ChatGPT.');
-                throw new Error(message);
+                const aiError = createAiRequestError(result, response.status);
+                if (extractedText.trim()) {
+                    resJson = parseVocabularyOffline(extractedText, file.name);
+                    if (resJson.length) {
+                        fallbackNotice = `${aiError.message}\nHệ thống đã tự chuyển sang quét Offline từ phần chữ đọc được trong tài liệu.`;
+                    } else {
+                        throw aiError;
+                    }
+                } else {
+                    throw aiError;
+                }
+            } else {
+                resJson = result.vocabulary;
             }
-            resJson = result.vocabulary;
         // Chế độ offline chỉ phù hợp cho PDF/TXT có thể trích xuất được chữ.
         } else if (aiProvider === 'offline' || !geminiApiKey) {
             progressText.textContent = 'Đang tự động bóc tách từ vựng từ tài liệu...';
@@ -4794,12 +4901,21 @@ async function startVocabImport() {
                 mergeResult.updated ? `${mergeResult.updated} từ được bổ sung dữ liệu` : '',
                 mergeResult.skipped ? `${mergeResult.skipped} từ trùng được bỏ qua` : ''
             ].filter(Boolean).join(', ');
-            showVocabFeedback(`Đã xử lý tài liệu: ${details}.`, mergeResult.added ? 'success' : 'warning');
+            const completionMessage = fallbackNotice
+                ? `${fallbackNotice}\nKết quả: ${details}.`
+                : `Đã xử lý tài liệu: ${details}.`;
+            showVocabFeedback(completionMessage, fallbackNotice || !mergeResult.added ? 'warning' : 'success');
+            showToast(
+                fallbackNotice ? 'Đã chuyển sang quét Offline và bổ sung kho từ vựng.' : `Đã nhập ${details}.`,
+                fallbackNotice ? 'warning' : 'success',
+                fallbackNotice ? 9000 : 5200
+            );
         } else {
             throw new Error('Không thể bóc tách từ vựng từ file này.');
         }
     } catch (err) {
-        alert('Lỗi: ' + err.message);
+        setInlineFeedback('vocab-import-feedback', err.message, 'error');
+        showToast(err.message, 'error', 9000);
     } finally {
         progressState.style.display = 'none';
         btnStart.disabled = false;
@@ -4987,7 +5103,7 @@ window.openFlashcards = function(encodedTopic) {
 
 function renderCurrentFlashcard() {
     if (currentFlashcardIndex >= currentFlashcards.length) {
-        alert('🎉 Bạn đã hoàn thành tất cả thẻ của phiên học này!');
+        showToast('Bạn đã hoàn thành tất cả thẻ của phiên học này!', 'success');
         closeFlashcardModal();
         renderVocabTopics();
         return;

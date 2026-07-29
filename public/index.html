@@ -21,7 +21,7 @@
     <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
-    <link rel="stylesheet" href="style.css?v=20260729_v10">
+    <link rel="stylesheet" href="style.css?v=20260729_v12">
 </head>
 <body>
     <div class="app-container">
@@ -48,29 +48,29 @@
             </div>
 
             <nav class="nav-menu">
-                <button class="nav-item active" data-tab="dashboard" onclick="switchTab('dashboard')">
+                <button class="nav-item active" data-tab="dashboard">
                     <i class="fa-solid fa-chart-pie"></i>
                     <span>Tổng Quan & Tiến Độ</span>
                 </button>
-                <button class="nav-item" data-tab="tasks" onclick="switchTab('tasks')">
+                <button class="nav-item" data-tab="tasks">
                     <i class="fa-solid fa-list-check"></i>
                     <span>Nhiệm Vụ Hàng Ngày</span>
                     <span class="badge" id="pending-count-badge">0</span>
                 </button>
-                <button class="nav-item" data-tab="pomodoro" onclick="switchTab('pomodoro')">
+                <button class="nav-item" data-tab="pomodoro">
                     <i class="fa-solid fa-clock"></i>
                     <span>Đồng Hồ Pomodoro</span>
                 </button>
-                <button class="nav-item" data-tab="subjects" onclick="switchTab('subjects')">
+                <button class="nav-item" data-tab="subjects">
                     <i class="fa-solid fa-book-bookmark"></i>
                     <span>Môn Học & Mục Tiêu</span>
                 </button>
-                <button class="nav-item" data-tab="exercises" onclick="switchTab('exercises')">
+                <button class="nav-item" data-tab="exercises">
                     <i class="fa-solid fa-pen-ruler"></i>
                     <span>Bài Tập & Luyện Tập</span>
                     <span class="badge" id="pending-exercise-count-badge" style="display:none">0</span>
                 </button>
-                <button class="nav-item" data-tab="vocabulary" onclick="switchTab('vocabulary')">
+                <button class="nav-item" data-tab="vocabulary">
                     <i class="fa-solid fa-language"></i>
                     <span>Học Từ Vựng</span>
                     <span class="badge" id="due-vocab-count-badge" style="display:none; background: var(--danger-color)">0</span>
@@ -406,10 +406,10 @@
                                 <span class="task-counter" id="exercise-pending-counter">0 bài tập</span>
                             </div>
                             <div class="header-right-actions" style="display:flex; gap:8px;">
-                                <button class="btn btn-outline btn-sm" id="btn-open-ai-quiz-modal" style="color: var(--primary-color); border-color: var(--primary-color);" title="Tạo Quiz Bằng AI">
+                                <button class="btn btn-outline btn-sm" id="btn-open-ai-quiz-modal" style="color: var(--primary-color); border-color: var(--primary-color);" title="Tạo Quiz Bằng AI" aria-label="Tạo quiz bằng AI">
                                     <i class="fa-solid fa-wand-magic-sparkles"></i>
                                 </button>
-                                <button class="btn btn-primary btn-sm" id="btn-add-exercise-modal" title="Thêm Bài Tập Mới">
+                                <button class="btn btn-primary btn-sm" id="btn-add-exercise-modal" title="Thêm Bài Tập Mới" aria-label="Thêm bài tập mới">
                                     <i class="fa-solid fa-plus"></i>
                                 </button>
                             </div>
@@ -792,8 +792,7 @@
         </div>
     </div>
 
-    
->     <!-- MODAL: CẤU HÌNH NHÀ CUNG CẤP AI & CHẾ ĐỘ QUÉT -->
+    <!-- MODAL: CẤU HÌNH NHÀ CUNG CẤP AI & CHẾ ĐỘ QUÉT -->
     <div class="modal-overlay" id="ai-config-modal">
         <div class="modal-card">
             <div class="modal-header">
@@ -818,6 +817,10 @@
                 
                 <p id="ai-provider-desc" style="font-size: 0.85rem; margin-top: 10px; line-height: 1.5; color: var(--text-secondary);">
                     ✨ <strong>ChatGPT:</strong> API key được giữ an toàn trên server. Có thể đọc văn bản và hình ảnh để tạo quiz hoặc trích xuất từ vựng.
+                </p>
+                <p class="ai-billing-note">
+                    <i class="fa-solid fa-circle-info"></i>
+                    Hạn mức OpenAI API tách biệt với gói ChatGPT. Khi hết quota, quản trị viên cần kiểm tra Billing hoặc chọn nhà cung cấp khác.
                 </p>
             </div>
             <div class="modal-footer">
@@ -859,6 +862,7 @@ var(--primary-color);"></p>
 15px; display: block;"></div>
                       <p id="ai-quiz-progress-text" style="font-weight: 500;">Đang xử lý...</p>
                   </div>
+                  <div class="inline-feedback" id="ai-quiz-feedback" role="alert" aria-live="assertive"></div>
               </div>
               <div class="modal-footer">
                   <button type="button" class="btn btn-outline" id="btn-cancel-ai-quiz">Hủy</button>
@@ -1065,6 +1069,7 @@ fa-check-double"></i> Nộp Bài</button>
                     <i class="fa-solid fa-spinner fa-spin" style="font-size: 1.5rem; color: var(--primary-color); margin-bottom: 10px;"></i>
                     <p id="vocab-progress-text" style="font-weight: 500;">Đang xử lý...</p>
                 </div>
+                <div class="inline-feedback" id="vocab-import-feedback" role="alert" aria-live="assertive"></div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-outline" id="btn-cancel-import-vocab">Hủy</button>
@@ -1112,7 +1117,9 @@ fa-check-double"></i> Nộp Bài</button>
         }
     </style>
 
-    <script src="app.js?v=20260729_v11"></script>
+    <div class="toast-stack" id="app-toast-stack" aria-live="polite" aria-atomic="false"></div>
+
+    <script src="app.js?v=20260729_v12"></script>
 </body>
 </html>
 

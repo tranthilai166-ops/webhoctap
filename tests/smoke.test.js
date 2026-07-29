@@ -9,7 +9,7 @@ process.env.PORT = '0';
 process.env.DATA_DIR = testDataDir;
 delete process.env.OPENAI_API_KEY;
 
-const { server } = require('../server');
+const { server, getOpenAIErrorDetails, shouldRetryOpenAIError } = require('../server');
 
 async function ensureServerListening() {
     if (server.listening) return;
@@ -53,6 +53,9 @@ test('health check và trang web hoạt động', async () => {
     assert.match(page, /id="vocab-manager-modal"/);
     assert.match(page, /id="vocab-confirm-modal"/);
     assert.match(page, /id="task-search-input"[^>]+autocomplete="off"/);
+    assert.match(page, /id="app-toast-stack"/);
+    assert.match(page, /id="ai-quiz-feedback"/);
+    assert.doesNotMatch(page, /^>\s*<!-- MODAL:/m);
 });
 
 test('đăng ký, đăng nhập và bảo vệ mật khẩu', async () => {
@@ -133,4 +136,25 @@ test('API AI báo cấu hình thiếu rõ ràng khi chưa có khóa', async () =
     }));
     assert.equal(vocabularyResponse.status, 503);
     assert.equal((await vocabularyResponse.json()).error, 'openai_not_configured');
+});
+
+test('phân loại lỗi OpenAI quota và rate limit an toàn', () => {
+    const quota = getOpenAIErrorDetails({
+        status: 429,
+        code: 'insufficient_quota',
+        message: 'You exceeded your current quota'
+    });
+    assert.equal(quota.status, 429);
+    assert.equal(quota.body.error, 'openai_quota_exceeded');
+    assert.equal(quota.body.retryable, false);
+    assert.equal(shouldRetryOpenAIError({ status: 429, code: 'insufficient_quota' }), false);
+
+    const rateLimit = getOpenAIErrorDetails({
+        status: 429,
+        code: 'rate_limit_exceeded',
+        message: 'Rate limit reached'
+    });
+    assert.equal(rateLimit.body.error, 'openai_rate_limited');
+    assert.equal(rateLimit.body.retryable, true);
+    assert.equal(shouldRetryOpenAIError({ status: 429, code: 'rate_limit_exceeded' }), true);
 });
