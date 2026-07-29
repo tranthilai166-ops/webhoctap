@@ -11,6 +11,8 @@ const path = require('path');
 const http = require('http');
 const { Server } = require('socket.io');
 const OpenAI = require('openai');
+const bcrypt = require('bcryptjs');
+const { randomUUID } = require('crypto');
 
 const app = express();
 const server = http.createServer(app);
@@ -181,6 +183,21 @@ function safeUserId(userId) {
     return String(userId || '').replace(/[^a-zA-Z0-9_\-]/g, '');
 }
 
+function toPublicUser(user) {
+    if (!user || typeof user !== 'object') return user;
+    const { password, passwordHash, ...publicUser } = user;
+    return publicUser;
+}
+
+function toPublicSystemDB(data) {
+    return {
+        users: (data.users || []).map(toPublicUser),
+        friendships: data.friendships || [],
+        messages: data.messages || [],
+        groups: data.groups || []
+    };
+}
+
 function readJsonFile(filePath, fallback) {
     try {
         if (fs.existsSync(filePath)) {
@@ -233,7 +250,17 @@ function mergeSystemDB(incomingData) {
     // 1. Merge users (theo userId)
     const usersMap = new Map();
     (currentData.users || []).forEach(u => { if (u && u.userId) usersMap.set(u.userId, u); });
-    users.forEach(u => { if (u && u.userId) usersMap.set(u.userId, u); });
+    users.forEach(u => {
+        if (!u || !u.userId) return;
+        const existing = usersMap.get(u.userId) || {};
+        // Hồ sơ từ client không được xóa hoặc thay thế thông tin xác thực trên server.
+        usersMap.set(u.userId, {
+            ...existing,
+            ...toPublicUser(u),
+            ...(existing.passwordHash ? { passwordHash: existing.passwordHash } : {}),
+            ...(existing.password ? { password: existing.password } : {})
+        });
+    });
 
     // 2. Merge friendships (theo id hoặc cặp user1-user2)
     const friendshipsMap = new Map();
@@ -282,20 +309,89 @@ function mergeSystemDB(incomingData) {
     return merged;
 }
 
+/* ---------------- AUTHENTICATION ---------------- */
+
+app.post('/api/auth/register', async (req, res) => {
+    const name = String(req.body?.name || '').trim();
+    const userId = safeUserId(String(req.body?.userId || '').toLowerCase());
+    const password = String(req.body?.password || '');
+
+    if (!name || !userId || password.length < 4) {
+        return res.status(400).json({ ok: false, error: 'invalid_registration' });
+    }
+
+    try {
+        const db = readJsonFile(SYSTEM_DB_PATH, { users: [], friendships: [], messages: [], groups: [] });
+        if ((db.users || []).some(user => user?.userId === userId)) {
+            return res.status(409).json({ ok: false, error: 'user_exists' });
+        }
+
+        const user = {
+            id: `user-${randomUUID()}`,
+            name: name.slice(0, 120),
+            userId,
+            passwordHash: await bcrypt.hash(password, 12),
+            createdAt: Date.now()
+        };
+        db.users = [...(db.users || []), user];
+        writeJsonFile(SYSTEM_DB_PATH, db);
+
+        const publicDb = toPublicSystemDB(db);
+        io.emit('system-db-updated', publicDb);
+        res.status(201).json({ ok: true, user: toPublicUser(user) });
+    } catch (err) {
+        console.error('[Auth register]', err);
+        res.status(500).json({ ok: false, error: 'registration_failed' });
+    }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+    const userId = safeUserId(String(req.body?.userId || '').toLowerCase());
+    const password = String(req.body?.password || '');
+
+    if (!userId || !password) {
+        return res.status(400).json({ ok: false, error: 'invalid_login' });
+    }
+
+    try {
+        const db = readJsonFile(SYSTEM_DB_PATH, { users: [], friendships: [], messages: [], groups: [] });
+        const user = (db.users || []).find(item => item?.userId === userId);
+        if (!user) return res.status(401).json({ ok: false, error: 'invalid_credentials' });
+
+        const valid = user.passwordHash
+            ? await bcrypt.compare(password, user.passwordHash)
+            : user.password === password;
+        if (!valid) return res.status(401).json({ ok: false, error: 'invalid_credentials' });
+
+        // Tự động chuyển tài khoản cũ đang lưu mật khẩu thường sang bcrypt.
+        if (!user.passwordHash) {
+            user.passwordHash = await bcrypt.hash(password, 12);
+            delete user.password;
+            writeJsonFile(SYSTEM_DB_PATH, db);
+        }
+
+        res.json({ ok: true, user: toPublicUser(user) });
+    } catch (err) {
+        console.error('[Auth login]', err);
+        res.status(500).json({ ok: false, error: 'login_failed' });
+    }
+});
+
 /* ---------------- SYSTEM DB (users / friendships / messages / groups) ---------------- */
 
 // Lấy toàn bộ system DB
 app.get('/api/system-db', (req, res) => {
     const data = readJsonFile(SYSTEM_DB_PATH, { users: [], friendships: [], messages: [], groups: [] });
-    res.json(data);
+    res.json(toPublicSystemDB(data));
 });
 
 // Ghi đè / hợp nhất system DB
 app.put('/api/system-db', (req, res) => {
     try {
         const updated = mergeSystemDB(req.body || {});
-        io.emit('system-db-updated', updated);
-        res.json({ ok: true, data: updated });
+        const publicUpdated = toPublicSystemDB(updated);
+        io.emit('system-db-updated', publicUpdated);
+        res.json({ ok: true, data: publicUpdated });
     } catch (err) {
         console.error(err);
         res.status(500).json({ ok: false, error: 'save_failed' });
@@ -381,28 +477,28 @@ io.on('connection', (socket) => {
     // Khi có dữ liệu System DB mới (đăng ký, kết bạn, nhắn tin)
     socket.on('sync-system-db', (data) => {
         const updated = mergeSystemDB(data);
-        io.emit('system-db-updated', updated);
+        io.emit('system-db-updated', toPublicSystemDB(updated));
     });
 
     // Gửi tin nhắn mới real-time
     socket.on('send-message', (msgData) => {
         if (!msgData || !msgData.id) return;
         const updated = mergeSystemDB({ messages: [msgData] });
-        io.emit('system-db-updated', updated);
+        io.emit('system-db-updated', toPublicSystemDB(updated));
     });
 
     // Tạo kết bạn mới real-time
     socket.on('add-friendship', (friendshipData) => {
         if (!friendshipData || !friendshipData.id) return;
         const updated = mergeSystemDB({ friendships: [friendshipData] });
-        io.emit('system-db-updated', updated);
+        io.emit('system-db-updated', toPublicSystemDB(updated));
     });
 
     // Tạo nhóm mới real-time
     socket.on('create-group', (groupData) => {
         if (!groupData || !groupData.id) return;
         const updated = mergeSystemDB({ groups: [groupData] });
-        io.emit('system-db-updated', updated);
+        io.emit('system-db-updated', toPublicSystemDB(updated));
     });
 
     // Call signaling events...
@@ -483,3 +579,5 @@ server.listen(PORT, () => {
         console.log('[Khởi động] ⚠️  Không thấy user nào trong system-db.json. Nếu bạn đã từng có user trước đó, kiểm tra xem Volume có đang gắn đúng mount path (mặc định /date) và có được giữ nguyên qua lần deploy này không.');
     }
 });
+
+module.exports = { app, server };

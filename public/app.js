@@ -139,21 +139,40 @@ const DEFAULT_MAILBOX = [
     }
 ];
 
+function cloneDefaultSubjects() {
+    return DEFAULT_SUBJECTS.map(subject => ({ ...subject }));
+}
+
+function cloneDefaultMailbox() {
+    return DEFAULT_MAILBOX.map(letter => ({ ...letter }));
+}
+
+function readLocalJSON(key, fallback) {
+    try {
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : fallback;
+    } catch (error) {
+        console.warn(`Dữ liệu cục bộ "${key}" bị lỗi và đã được đặt lại.`, error);
+        localStorage.removeItem(key);
+        return fallback;
+    }
+}
+
 // Multi-Account & Global System Database
 let systemDB = {
-    users: JSON.parse(localStorage.getItem('studyflow_users_db')) || [],
-    friendships: JSON.parse(localStorage.getItem('studyflow_friendships')) || [],
-    groups: JSON.parse(localStorage.getItem('studyflow_groups')) || [],
-    messages: JSON.parse(localStorage.getItem('studyflow_messages')) || []
+    users: readLocalJSON('studyflow_users_db', []),
+    friendships: readLocalJSON('studyflow_friendships', []),
+    groups: readLocalJSON('studyflow_groups', []),
+    messages: readLocalJSON('studyflow_messages', [])
 };
 
 // Current Session State
-let currentUser = JSON.parse(localStorage.getItem('studyflow_current_user')) || null;
+let currentUser = readLocalJSON('studyflow_current_user', null);
 
 let state = {
     tasks: [],
-    subjects: DEFAULT_SUBJECTS,
-    mailbox: DEFAULT_MAILBOX,
+    subjects: cloneDefaultSubjects(),
+    mailbox: cloneDefaultMailbox(),
     streak: 1,
     lastCheckinDate: '',
     theme: localStorage.getItem('studyflow_theme') || 'dark',
@@ -291,20 +310,24 @@ function loadUserData() {
     if (!currentUser) return;
 
     const userKey = `studyflow_userdata_${currentUser.userId}`;
-    const saved = JSON.parse(localStorage.getItem(userKey));
+    const saved = readLocalJSON(userKey, null);
 
     if (saved) {
         state.tasks = saved.tasks || [];
-        state.subjects = saved.subjects || DEFAULT_SUBJECTS;
-        state.mailbox = saved.mailbox || DEFAULT_MAILBOX;
+        state.subjects = Array.isArray(saved.subjects) && saved.subjects.length
+            ? saved.subjects
+            : cloneDefaultSubjects();
+        state.mailbox = Array.isArray(saved.mailbox)
+            ? saved.mailbox
+            : cloneDefaultMailbox();
         state.streak = saved.streak || 1;
         state.lastCheckinDate = saved.lastCheckinDate || '';
         state.exercises = saved.exercises || [];
         state.vocabulary = saved.vocabulary || [];
     } else {
         state.tasks = [];
-        state.subjects = DEFAULT_SUBJECTS;
-        state.mailbox = DEFAULT_MAILBOX;
+        state.subjects = cloneDefaultSubjects();
+        state.mailbox = cloneDefaultMailbox();
         state.streak = 1;
         state.lastCheckinDate = '';
         state.exercises = [];
@@ -374,14 +397,17 @@ function getInitials(name) {
 }
 
 // --- GLOBAL FAIL-SAFE AUTH HANDLERS ---
-window.handleUserRegister = function(e) {
+window.handleUserRegister = async function(e) {
     if (e) e.preventDefault();
 
     const feedbackEl = document.getElementById('auth-feedback');
     function showFb(msg, isError = true) {
         if (feedbackEl) {
             feedbackEl.className = `auth-feedback-box ${isError ? 'error' : 'success'}`;
-            feedbackEl.innerHTML = isError ? `<i class="fa-solid fa-triangle-exclamation"></i> ${msg}` : `<i class="fa-solid fa-circle-check"></i> ${msg}`;
+            feedbackEl.innerHTML = '';
+            const icon = document.createElement('i');
+            icon.className = isError ? 'fa-solid fa-triangle-exclamation' : 'fa-solid fa-circle-check';
+            feedbackEl.append(icon, document.createTextNode(` ${msg}`));
             feedbackEl.style.display = 'block';
         } else {
             alert(msg);
@@ -419,27 +445,27 @@ window.handleUserRegister = function(e) {
         return false;
     }
 
-    if (!Array.isArray(systemDB.users)) {
-        systemDB.users = [];
-    }
-
-    const existing = systemDB.users.find(u => u && u.userId === rawUserId);
-    if (existing) {
-        showFb(`User ID "@${rawUserId}" đã có người đăng ký. Vui lòng chọn User ID khác!`);
+    let newUser;
+    try {
+        const response = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, userId: rawUserId, password })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            showFb(response.status === 409
+                ? `User ID "@${rawUserId}" đã có người đăng ký. Vui lòng chọn User ID khác!`
+                : 'Không thể đăng ký lúc này. Vui lòng kiểm tra kết nối và thử lại!');
+            return false;
+        }
+        newUser = result.user;
+    } catch (error) {
+        showFb('Không thể kết nối máy chủ để đăng ký. Vui lòng thử lại!');
         return false;
     }
 
-    const newUser = {
-        id: 'user-' + Date.now(),
-        name: name,
-        userId: rawUserId,
-        password: password,
-        createdAt: Date.now()
-    };
-
-    systemDB.users.push(newUser);
-    saveSystemDB();
-
+    updateLocalSystemDB({ users: [newUser] });
     currentUser = newUser;
     saveUserData();
 
@@ -456,14 +482,17 @@ window.handleUserRegister = function(e) {
     return false;
 };
 
-window.handleUserLogin = function(e) {
+window.handleUserLogin = async function(e) {
     if (e) e.preventDefault();
 
     const feedbackEl = document.getElementById('auth-feedback');
     function showFb(msg, isError = true) {
         if (feedbackEl) {
             feedbackEl.className = `auth-feedback-box ${isError ? 'error' : 'success'}`;
-            feedbackEl.innerHTML = isError ? `<i class="fa-solid fa-triangle-exclamation"></i> ${msg}` : `<i class="fa-solid fa-circle-check"></i> ${msg}`;
+            feedbackEl.innerHTML = '';
+            const icon = document.createElement('i');
+            icon.className = isError ? 'fa-solid fa-triangle-exclamation' : 'fa-solid fa-circle-check';
+            feedbackEl.append(icon, document.createTextNode(` ${msg}`));
             feedbackEl.style.display = 'block';
         } else {
             alert(msg);
@@ -481,18 +510,29 @@ window.handleUserLogin = function(e) {
         return false;
     }
 
-    if (!Array.isArray(systemDB.users)) {
-        systemDB.users = [];
-    }
-
-    const user = systemDB.users.find(u => u && u.userId === rawUserId && u.password === password);
-    if (!user) {
-        showFb('User ID hoặc Mật khẩu không đúng. Vui lòng thử lại!');
+    let user;
+    try {
+        const response = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: rawUserId, password })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            showFb(response.status === 401
+                ? 'User ID hoặc Mật khẩu không đúng. Vui lòng thử lại!'
+                : 'Không thể đăng nhập lúc này. Vui lòng kiểm tra kết nối!');
+            return false;
+        }
+        user = result.user;
+    } catch (error) {
+        showFb('Không thể kết nối máy chủ để đăng nhập. Vui lòng thử lại!');
         return false;
     }
 
+    updateLocalSystemDB({ users: [user] });
     currentUser = user;
-    saveUserData();
+    localStorage.setItem('studyflow_current_user', JSON.stringify(currentUser));
 
     showFb(`Đăng nhập thành công! Chào mừng ${user.name}`, false);
 
@@ -633,25 +673,77 @@ function initAuthSystem() {
 }
 
 function performLogout() {
-    if (confirm('Bạn có chắc chắn muốn đăng xuất khỏi tài khoản hiện tại?')) {
-        saveUserData();
-        stopContinuousSystemSync();
-        if (socketIO) {
-            socketIO.disconnect();
-            socketIO = null;
-        }
-        currentUser = null;
-        localStorage.removeItem('studyflow_current_user');
-        
-        const nameEl = document.getElementById('sidebar-user-name');
-        const idEl = document.getElementById('sidebar-user-id');
-        const avatarEl = document.getElementById('sidebar-user-avatar');
-        if (nameEl) nameEl.textContent = 'Chưa Đăng Nhập';
-        if (idEl) idEl.textContent = '@guest';
-        if (avatarEl) avatarEl.textContent = 'US';
-
-        openAuthModal();
+    saveUserData();
+    stopContinuousSystemSync();
+    if (socketIO) {
+        socketIO.disconnect();
+        socketIO = null;
     }
+    currentUser = null;
+    localStorage.removeItem('studyflow_current_user');
+
+    clearInterval(pomoState.intervalId);
+    pomoState.isRunning = false;
+    pomoState.intervalId = null;
+    pomoState.timeLeft = pomoState.duration;
+    clearInterval(liveStudyState.intervalId);
+    liveStudyState = {
+        taskId: null,
+        secondsSpent: 0,
+        isRunning: false,
+        isPaused: false,
+        isBreak: false,
+        breakSecondsLeft: 0,
+        intervalId: null
+    };
+
+    // Xóa dữ liệu đang hiển thị của tài khoản cũ trên thiết bị dùng chung.
+    state.tasks = [];
+    state.subjects = cloneDefaultSubjects();
+    state.mailbox = cloneDefaultMailbox();
+    state.streak = 1;
+    state.lastCheckinDate = '';
+    state.currentPeriod = 'week';
+    state.activeChatFriendId = null;
+    state.activeGroupId = null;
+    state.exercises = [];
+    state.vocabulary = [];
+
+    const nameEl = document.getElementById('sidebar-user-name');
+    const idEl = document.getElementById('sidebar-user-id');
+    const avatarEl = document.getElementById('sidebar-user-avatar');
+    const greetingTitle = document.getElementById('greeting-title');
+    if (nameEl) nameEl.textContent = 'Chưa Đăng Nhập';
+    if (idEl) idEl.textContent = '@guest';
+    if (avatarEl) avatarEl.textContent = 'US';
+    if (greetingTitle) greetingTitle.textContent = 'Xin chào, Bạn học! 👋';
+
+    document.getElementById('btn-show-login')?.classList.add('active');
+    document.getElementById('btn-show-register')?.classList.remove('active');
+    const loginForm = document.getElementById('login-form');
+    const registerForm = document.getElementById('register-form');
+    if (loginForm) loginForm.style.display = 'block';
+    if (registerForm) registerForm.style.display = 'none';
+    const subtitle = document.getElementById('auth-form-subtitle');
+    if (subtitle) subtitle.textContent = 'Đăng nhập để tiếp tục học tập';
+    const feedback = document.getElementById('auth-feedback');
+    if (feedback) {
+        feedback.style.display = 'none';
+        feedback.replaceChildren();
+    }
+    document.querySelectorAll('#auth-modal input').forEach(input => { input.value = ''; });
+
+    renderDashboard();
+    renderTasksPage();
+    renderSubjects();
+    renderPomodoroTasksDropdown();
+    updateMailboxBadge();
+    updatePendingExerciseCount();
+    renderExercises();
+    renderVocabTopics();
+    updatePomodoroDisplay();
+
+    openAuthModal();
 }
 
 function openAuthModal() {
@@ -722,7 +814,7 @@ function initChatSystem() {
             saveSystemDB();
             if (socketIO) socketIO.emit('add-friendship', existingRelation);
 
-            resultEl.innerHTML = `<span class="text-success">📨 Đã gửi lời mời kết bạn tới ${targetUser.name} (@${targetUser.userId})! Đang chờ chấp nhận...</span>`;
+            resultEl.innerHTML = `<span class="text-success">📨 Đã gửi lời mời kết bạn tới ${escapeHTML(targetUser.name)} (@${targetUser.userId})! Đang chờ chấp nhận...</span>`;
             document.getElementById('search-friend-userid').value = '';
             return;
         }
@@ -747,7 +839,7 @@ function initChatSystem() {
             socketIO.emit('add-friendship', newFriendship);
         }
 
-        resultEl.innerHTML = `<span class="text-success">📨 Đã gửi lời mời kết bạn tới ${targetUser.name} (@${targetUser.userId})! Đang chờ chấp nhận...</span>`;
+        resultEl.innerHTML = `<span class="text-success">📨 Đã gửi lời mời kết bạn tới ${escapeHTML(targetUser.name)} (@${targetUser.userId})! Đang chờ chấp nhận...</span>`;
         document.getElementById('search-friend-userid').value = '';
     });
 
@@ -890,7 +982,7 @@ function renderIncomingRequests() {
         const senderName = sender ? sender.name : f.user1;
         return `
             <div class="friend-request-item">
-                <div class="user-avatar-circle">${getInitials(senderName)}</div>
+                <div class="user-avatar-circle">${escapeHTML(getInitials(senderName))}</div>
                 <div class="friend-item-info">
                     <div class="friend-item-name">${escapeHTML(senderName)}</div>
                     <div class="user-id-badge">@${f.user1}</div>
@@ -998,7 +1090,7 @@ function openCreateGroupModal() {
         listEl.innerHTML = friends.map(f => `
             <label class="group-member-checkbox-item">
                 <input type="checkbox" class="group-member-checkbox" value="${f.userId}">
-                <div class="user-avatar-circle" style="width:28px;height:28px;font-size:12px">${getInitials(f.name)}</div>
+                <div class="user-avatar-circle" style="width:28px;height:28px;font-size:12px">${escapeHTML(getInitials(f.name))}</div>
                 <span>${escapeHTML(f.name)} (@${f.userId})</span>
             </label>
         `).join('');
@@ -1083,7 +1175,7 @@ function renderFriendsList() {
 
     listContainer.innerHTML = friends.map(f => `
         <div class="friend-item-card ${state.activeChatFriendId === f.userId ? 'active' : ''}" onclick="selectChatFriend('${f.userId}')">
-            <div class="user-avatar-circle">${getInitials(f.name)}</div>
+            <div class="user-avatar-circle">${escapeHTML(getInitials(f.name))}</div>
             <div class="friend-item-info">
                 <div class="friend-item-name">${escapeHTML(f.name)}</div>
                 <div class="user-id-badge">@${f.userId}</div>
@@ -1340,12 +1432,13 @@ function renderDashboardTasksList() {
 
 function createTaskItemHTML(task) {
     const subject = state.subjects.find(s => s.id === task.subjectId) || { name: 'Chung', color: '#6366f1' };
+    const subjectColor = safeCssColor(subject.color);
     const priorityLabels = { high: 'Cao 🔥', medium: 'Vừa ⚡', low: 'Thấp 🌱' };
     const formattedDate = task.date ? formatDateVi(task.date) : 'Hôm nay';
     const timeDisplay = task.time ? `🕒 ${task.time}` : '';
 
     return `
-        <div class="task-item ${task.completed ? 'completed' : ''}" data-id="${task.id}">
+        <div class="task-item ${task.completed ? 'completed' : ''}" data-id="${escapeHTML(task.id)}">
             <label class="checkbox-container">
                 <input type="checkbox" class="task-checkbox" ${task.completed ? 'checked' : ''}>
                 <span class="checkmark"></span>
@@ -1353,16 +1446,16 @@ function createTaskItemHTML(task) {
             <div class="task-content">
                 <div class="task-title">${escapeHTML(task.title)}</div>
                 <div class="task-meta">
-                    <span class="subject-badge" style="background-color: ${subject.color}">
+                    <span class="subject-badge" style="background-color: ${subjectColor}">
                         ${escapeHTML(subject.name)}
                     </span>
                     <span class="datetime-pill">
-                        <i class="fa-regular fa-calendar-days"></i> ${formattedDate} ${timeDisplay}
+                        <i class="fa-regular fa-calendar-days"></i> ${escapeHTML(formattedDate)} ${escapeHTML(timeDisplay)}
                     </span>
                     <span class="priority-tag priority-${task.priority}">
                         ${priorityLabels[task.priority] || 'Vừa'}
                     </span>
-                    <span><i class="fa-solid fa-stopwatch"></i> ${task.timeSpent || 0} phút</span>
+                    <span><i class="fa-solid fa-stopwatch"></i> ${Number(task.timeSpent) || 0} phút</span>
                 </div>
             </div>
             <div class="task-actions">
@@ -1690,12 +1783,12 @@ function openMailboxModal() {
     } else {
         listContainer.innerHTML = state.mailbox.map(m => `
             <div class="letter-card ${m.read ? '' : 'unread'}" onclick="viewSingleLetter('${m.id}')">
-                <div class="letter-card-icon">${m.badgeIcon || '✉️'}</div>
+                <div class="letter-card-icon">${escapeHTML(m.badgeIcon || '✉️')}</div>
                 <div class="letter-card-info">
                     <div class="letter-card-title">${escapeHTML(m.title)}</div>
                     <div class="letter-card-snippet">${escapeHTML(m.content)}</div>
                 </div>
-                <div class="letter-card-date">${m.date}</div>
+                <div class="letter-card-date">${escapeHTML(m.date)}</div>
             </div>
         `).join('');
     }
@@ -1904,7 +1997,7 @@ function renderSubjectPieChart() {
         legendContainer.innerHTML = subjectCounts.map(s => `
             <div class="legend-item">
                 <div class="legend-left">
-                    <span class="legend-dot" style="background-color: ${s.color}"></span>
+                    <span class="legend-dot" style="background-color: ${safeCssColor(s.color)}"></span>
                     <span>${escapeHTML(s.name)}</span>
                 </div>
                 <span class="legend-val">${s.count} bài</span>
@@ -2104,7 +2197,7 @@ function renderSubjects() {
         return `
             <div class="subject-card">
                 <div class="subject-card-top">
-                    <span class="subject-badge-large" style="background-color: ${s.color}">
+                    <span class="subject-badge-large" style="background-color: ${safeCssColor(s.color)}">
                         <i class="fa-solid fa-book-open"></i> ${escapeHTML(s.name)}
                     </span>
                     <button class="icon-btn danger" onclick="deleteSubject('${s.id}')" title="Xóa môn"><i class="fa-solid fa-trash-can"></i></button>
@@ -2241,10 +2334,15 @@ function renderPomodoroTasksDropdown() {
 
 // Utility: Escape HTML
 function escapeHTML(str) {
-    if (!str) return '';
-    return str.replace(/[&<>'"]/g, 
+    if (str === null || str === undefined) return '';
+    return String(str).replace(/[&<>'"]/g,
         tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
     );
+}
+
+function safeCssColor(value, fallback = '#6366f1') {
+    const color = String(value || '');
+    return /^#[0-9a-f]{6}$/i.test(color) ? color : fallback;
 }
 
 /* ==========================================================================
@@ -3356,33 +3454,35 @@ function renderExercises() {
 
     const createCardHTML = (ex) => {
         const subj = state.subjects.find(s => s.id === ex.subjectId) || { name: 'Không rõ', color: '#888' };
-        const dueText = ex.dueDate ? `<span class="task-date"><i class="fa-solid fa-clock"></i> Hạn nộp: ${ex.dueDate}</span>` : '';
+        const exerciseId = String(ex.id || '').replace(/[^a-zA-Z0-9_-]/g, '');
+        const subjectColor = safeCssColor(subj.color, '#888888');
+        const dueText = ex.dueDate ? `<span class="task-date"><i class="fa-solid fa-clock"></i> Hạn nộp: ${escapeHTML(ex.dueDate)}</span>` : '';
         const fileLink = ex.attachedFile ? `
             <div style="margin-top: 6px;">
-                <a href="${ex.attachedFile.data}" download="${ex.attachedFile.name}" target="_blank" class="btn btn-outline" style="padding: 3px 10px; font-size: 0.8rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 5px;">
-                    <i class="fa-solid fa-paperclip"></i> ${ex.attachedFile.name}
+                <a href="${escapeHTML(ex.attachedFile.data)}" download="${escapeHTML(ex.attachedFile.name)}" target="_blank" rel="noopener noreferrer" class="btn btn-outline" style="padding: 3px 10px; font-size: 0.8rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 5px;">
+                    <i class="fa-solid fa-paperclip"></i> ${escapeHTML(ex.attachedFile.name)}
                 </a>
             </div>
         ` : '';
 
         return `
             <div class="task-item ${ex.completed ? 'completed' : ''}">
-                <div class="task-checkbox ${ex.completed ? 'checked' : ''}" onclick="toggleExerciseComplete('${ex.id}')">
+                <div class="task-checkbox ${ex.completed ? 'checked' : ''}" onclick="toggleExerciseComplete('${exerciseId}')">
                     <i class="fa-solid fa-check"></i>
                 </div>
                 <div class="task-content">
-                    <h4 class="task-title" style="text-decoration: ${ex.completed ? 'line-through' : 'none'}">${ex.title}</h4>
-                    ${ex.desc ? `<p class="task-desc" style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">${ex.desc}</p>` : ''}
+                    <h4 class="task-title" style="text-decoration: ${ex.completed ? 'line-through' : 'none'}">${escapeHTML(ex.title)}</h4>
+                    ${ex.desc ? `<p class="task-desc" style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">${escapeHTML(ex.desc)}</p>` : ''}
                     ${fileLink}
                     <div class="task-meta" style="margin-top: 6px;">
-                        <span class="task-subject" style="background: ${subj.color}20; color: ${subj.color}"><i class="fa-solid fa-tag"></i> ${subj.name}</span>
+                        <span class="task-subject" style="background: ${subjectColor}20; color: ${subjectColor}"><i class="fa-solid fa-tag"></i> ${escapeHTML(subj.name)}</span>
                         ${dueText}
                     </div>
                 </div>
                 <div class="task-actions">
-                    ${ex.isQuiz && !ex.completed ? `<button class="btn btn-primary" style="padding: 5px 12px; font-size: 0.85rem; border-radius: 6px; margin-right: 5px;" onclick="openQuizExercise('${ex.id}')"><i class="fa-solid fa-play"></i> Làm bài</button>` : ''}
-                    <button class="icon-btn edit" onclick="openExerciseModal(state.exercises.find(e => e.id === '${ex.id}'))" title="Sửa"><i class="fa-solid fa-pen"></i></button>
-                    <button class="icon-btn danger" onclick="deleteExercise('${ex.id}')" title="Xóa"><i class="fa-solid fa-trash"></i></button>
+                    ${ex.isQuiz && !ex.completed ? `<button class="btn btn-primary" style="padding: 5px 12px; font-size: 0.85rem; border-radius: 6px; margin-right: 5px;" onclick="openQuizExercise('${exerciseId}')"><i class="fa-solid fa-play"></i> Làm bài</button>` : ''}
+                    <button class="icon-btn edit" onclick="openExerciseModal(state.exercises.find(e => e.id === '${exerciseId}'))" title="Sửa"><i class="fa-solid fa-pen"></i></button>
+                    <button class="icon-btn danger" onclick="deleteExercise('${exerciseId}')" title="Xóa"><i class="fa-solid fa-trash"></i></button>
                 </div>
             </div>
         `;
@@ -3421,8 +3521,6 @@ function renderExercises() {
 
 let aiProvider = localStorage.getItem('ai_provider') || 'openai';
 let geminiApiKey = localStorage.getItem('gemini_api_key') || '';
-let groqApiKey = localStorage.getItem('groq_api_key') || '';
-let openrouterApiKey = localStorage.getItem('openrouter_api_key') || '';
 let currentQuizData = [];
 let currentQuizExerciseId = null;
 
@@ -3513,7 +3611,7 @@ window.updateAiProviderUI = function() {
 
     if (provider === 'offline') {
         if (keyGroup) keyGroup.style.display = 'none';
-        if (desc) desc.innerHTML = '⚡ <strong>Chế độ Quét Tự Động Offline:</strong> Trích xuất từ vựng trực tiếp từ PDF, file văn bản hoặc tài liệu 100% tức thì mà không cần bất kỳ API Key hay kết nối mạng nào!';
+        if (desc) desc.innerHTML = '⚡ <strong>Quét từ vựng Offline:</strong> Dùng cho PDF/TXT có văn bản đọc được. Ảnh hoặc PDF scan cần ChatGPT/Gemini.';
     } else if (provider === 'openai') {
         if (keyGroup) keyGroup.style.display = 'none';
         if (desc) desc.innerHTML = '✨ <strong>ChatGPT:</strong> API key được giữ an toàn trên server. Có thể đọc văn bản và hình ảnh, tạo câu 4 đáp án hoặc Đúng/Sai.';
@@ -3522,16 +3620,6 @@ window.updateAiProviderUI = function() {
         if (keyInput) keyInput.value = geminiApiKey;
         if (hint) hint.innerHTML = '<a href="https://aistudio.google.com/app/apikey" target="_blank" style="color: var(--primary-color);">Lấy Google Gemini API Key tại đây (Miễn phí)</a>';
         if (desc) desc.innerHTML = '🤖 <strong>Google Gemini AI:</strong> Sử dụng mô hình Gemini Flash từ Google.';
-    } else if (provider === 'groq') {
-        if (keyGroup) keyGroup.style.display = 'block';
-        if (keyInput) keyInput.value = groqApiKey;
-        if (hint) hint.innerHTML = '<a href="https://console.groq.com/keys" target="_blank" style="color: var(--primary-color);">Lấy Groq API Key tại đây (gsk_...) - Miễn phí siêu nhanh</a>';
-        if (desc) desc.innerHTML = '⚡ <strong>Groq Cloud AI:</strong> Mô hình Llama-3.3-70b siêu nhanh từ Groq.';
-    } else if (provider === 'openrouter') {
-        if (keyGroup) keyGroup.style.display = 'block';
-        if (keyInput) keyInput.value = openrouterApiKey;
-        if (hint) hint.innerHTML = '<a href="https://openrouter.ai/keys" target="_blank" style="color: var(--primary-color);">Lấy OpenRouter API Key tại đây (sk-or-...) - Miễn phí Multi-Model</a>';
-        if (desc) desc.innerHTML = '🌐 <strong>OpenRouter AI:</strong> Hỗ trợ hàng chục mô hình AI mở miễn phí.';
     }
 };
 
@@ -3629,7 +3717,10 @@ function saveAiConfig() {
     aiProvider = document.getElementById('ai-provider-select').value;
     localStorage.setItem('ai_provider', aiProvider);
     if (aiProvider === 'openai') {
-        alert('Đã chọn ChatGPT. Hãy đặt OPENAI_API_KEY trong biến môi trường của server rồi khởi động lại web.');
+        closeAiConfigModal();
+        return;
+    }
+    if (aiProvider === 'offline') {
         closeAiConfigModal();
         return;
     }
@@ -3640,11 +3731,16 @@ function saveAiConfig() {
     }
     geminiApiKey = key;
     localStorage.setItem('gemini_api_key', key);
-    alert('Đã lưu cấu hình AI thành công!');
     closeAiConfigModal();
 }
 
 function openAiQuizModal() {
+    if (aiProvider === 'offline') {
+        openAiConfigModal();
+        const desc = document.getElementById('ai-provider-desc');
+        if (desc) desc.innerHTML = 'ℹ️ <strong>Tạo quiz cần ChatGPT hoặc Gemini.</strong> Chế độ Offline chỉ dùng để trích xuất từ vựng từ PDF/TXT có văn bản.';
+        return;
+    }
     if(aiProvider !== 'openai' && aiProvider !== 'offline' && !geminiApiKey) {
         openAiConfigModal();
         return;
@@ -3771,41 +3867,48 @@ async function extractTextFromPDF(file) {
     return fullText;
 }
 
-async function callGeminiToGenerateQuiz(base64String, mimeType, topic) {
-    let generateModels = [];
-    
-    // 1. Fetch available models dynamically
+async function getGeminiGenerateModels() {
     try {
-        const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${geminiApiKey}`;
+        const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000&key=${encodeURIComponent(geminiApiKey)}`;
         const listRes = await fetch(listUrl);
         if (listRes.ok) {
             const listData = await listRes.json();
-            if (listData.models && listData.models.length > 0) {
-                generateModels = listData.models.filter(m => {
+            if (Array.isArray(listData.models)) {
+                const models = listData.models.filter(m => {
                     const name = (m.name || '').toLowerCase();
-                    const isNonVisualSpecialist = /tts|audio|live|computer-use|imagen|embedding|robotics/.test(name);
-                    return m.supportedGenerationMethods &&
+                    const isSpecialistModel = /tts|audio|live|computer-use|image-generation|imagen|embedding|robotics/.test(name);
+                    return Array.isArray(m.supportedGenerationMethods) &&
                         m.supportedGenerationMethods.includes('generateContent') &&
                         name.includes('gemini') &&
-                        !isNonVisualSpecialist &&
+                        !isSpecialistModel &&
                         (name.includes('flash') || name.includes('pro'));
-                }).map(m => m.name.replace('models/', ''));
+                }).map(m => m.name.replace(/^models\//, ''));
+
+                if (models.length) {
+                    return [...new Set(models)].sort((a, b) => {
+                        const score = name => {
+                            if (name === 'gemini-3.6-flash') return 100;
+                            if (name === 'gemini-3.5-flash') return 95;
+                            if (name === 'gemini-flash-latest') return 90;
+                            if (/flash/i.test(name) && !/preview|exp/i.test(name)) return 80;
+                            if (/pro/i.test(name) && !/preview|exp/i.test(name)) return 70;
+                            if (/preview/i.test(name)) return 30;
+                            return 10;
+                        };
+                        return score(b) - score(a);
+                    });
+                }
             }
         }
     } catch (err) {
         console.warn('Không lấy được danh sách model, dùng danh sách mặc định.', err);
     }
 
-    if (generateModels.length === 0) {
-        generateModels = ['gemini-2.0-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
-    } else {
-        generateModels.sort((a, b) => {
-            let scoreA = a.includes('2.0-flash') ? 4 : (a.includes('1.5-flash') ? 3 : (a.includes('flash') ? 2 : (a.includes('pro') ? 1 : 0)));
-            let scoreB = b.includes('2.0-flash') ? 4 : (b.includes('1.5-flash') ? 3 : (b.includes('flash') ? 2 : (b.includes('pro') ? 1 : 0)));
-            return scoreB - scoreA;
-        });
-    }
+    return ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-flash-latest'];
+}
 
+async function callGeminiToGenerateQuiz(base64String, mimeType, topic) {
+    const generateModels = await getGeminiGenerateModels();
     let lastError = null;
     
     const prompt = `Bạn là một hệ thống bóc tách và tạo bài tập trắc nghiệm thông minh. Dựa vào nội dung file đính kèm, hãy tạo ra danh sách các câu hỏi trắc nghiệm khách quan (tối đa 30 câu).
@@ -3933,35 +4036,43 @@ function renderTakeQuizModal(quizArray, ex) {
     
     // Hiển thị tài liệu nguồn ngay đầu bài để người học đối chiếu khi làm.
     if (ex && ex.attachedFile && ex.attachedFile.data) {
-        const imgHeader = document.createElement('div');
-        imgHeader.className = 'quiz-source-preview';
-        const label = document.createElement('p');
-        label.textContent = 'Tài liệu minh họa: ' + (ex.attachedFile.name || 'tài liệu nguồn');
-        const isImage = ex.attachedFile.data.startsWith('data:image/');
-        const media = document.createElement(isImage ? 'img' : 'iframe');
-        media.src = ex.attachedFile.data;
-        media.className = isImage ? 'quiz-source-image' : 'quiz-source-pdf';
-        media.setAttribute('title', 'Tài liệu nguồn');
-        imgHeader.append(label, media);
-        container.appendChild(imgHeader);
+        const sourceData = String(ex.attachedFile.data);
+        const isImage = /^data:image\/(png|jpeg|jpg|webp);base64,/i.test(sourceData);
+        const isPdf = /^data:application\/pdf;base64,/i.test(sourceData);
+        const isPlainText = /^data:text\/plain(?:;charset=[^;,]+)?;base64,/i.test(sourceData);
+        if (!isImage && !isPdf && !isPlainText) {
+            console.warn('Đã bỏ qua định dạng xem trước tài liệu không an toàn.');
+        } else {
+            const imgHeader = document.createElement('div');
+            imgHeader.className = 'quiz-source-preview';
+            const label = document.createElement('p');
+            label.textContent = 'Tài liệu minh họa: ' + (ex.attachedFile.name || 'tài liệu nguồn');
+            const media = document.createElement(isImage ? 'img' : 'iframe');
+            media.src = sourceData;
+            media.className = isImage ? 'quiz-source-image' : 'quiz-source-pdf';
+            media.setAttribute('title', 'Tài liệu nguồn');
+            imgHeader.append(label, media);
+            container.appendChild(imgHeader);
+        }
     }
     
     quizArray.forEach((q, idx) => {
         const qCard = document.createElement('div');
         qCard.className = 'quiz-question-card';
         const typeLabel = q.type === 'true_false' ? 'Đúng / Sai' : 'Chọn 1 đáp án';
+        const options = Array.isArray(q.options) ? q.options : [];
         qCard.innerHTML = `
             <div class="quiz-question-meta"><span>Câu ${idx + 1}</span><small>${typeLabel}</small></div>
-            <div class="quiz-question-title">${q.question}</div>
+            <div class="quiz-question-title">${escapeHTML(q.question)}</div>
             <div class="quiz-options-list" id="q-opts-${idx}">
-                ${q.options.map((opt, optIdx) => `
+                ${options.map((opt, optIdx) => `
                     <div class="quiz-option" data-q="${idx}" data-opt="${optIdx}" onclick="selectQuizOption(this, ${idx}, ${optIdx})">
-                        ${String.fromCharCode(65 + optIdx)}. ${opt}
+                        ${String.fromCharCode(65 + optIdx)}. ${escapeHTML(opt)}
                     </div>
                 `).join('')}
             </div>
             <div id="q-feedback-${idx}" style="display:none; margin-top:15px; font-size:0.9rem; padding:10px; border-radius:5px; background:var(--bg-color); border-left: 3px solid var(--primary-color);">
-                <strong><i class="fa-solid fa-lightbulb" style="color:var(--warning-color)"></i> Giải thích:</strong> ${q.explanation || 'Không có giải thích.'}
+                <strong><i class="fa-solid fa-lightbulb" style="color:var(--warning-color)"></i> Giải thích:</strong> ${escapeHTML(q.explanation || 'Không có giải thích.')}
             </div>
         `;
         container.appendChild(qCard);
@@ -4193,7 +4304,7 @@ async function startVocabImport() {
                 base64String = String(base64Data);
             }
 
-            const generateModels = ['gemini-flash-latest', 'gemini-3.6-flash', 'gemini-flash-lite-latest', 'gemini-3.5-flash'];
+            const generateModels = await getGeminiGenerateModels();
             const promptText = "Bạn là hệ thống AI bóc tách từ vựng tiếng Anh chuyên nghiệp. Dựa vào hình ảnh/tài liệu đính kèm" +
                 (extractedText ? " và nội dung văn bản sau:\n" + extractedText : "") +
                 ", hãy tìm và trích xuất TẤT CẢ các từ vựng tiếng Anh xuất hiện kèm theo nghĩa tiếng Việt chuẩn xác nhất.\n\n" +
@@ -4375,15 +4486,16 @@ function renderVocabTopics() {
         card.style.borderLeft = hasDue ? '4px solid var(--danger-color)' : '4px solid var(--success-color)';
         
         card.innerHTML = `
-            <h4 style="margin:0; font-size: 1.1rem;">${topic}</h4>
+            <h4 style="margin:0; font-size: 1.1rem;">${escapeHTML(topic)}</h4>
             <div style="margin-top: 8px; font-size: 0.9rem; color: var(--text-secondary); width: 100%; display: flex; justify-content: space-between;">
                 <span>Tổng: ${stats.total} từ</span>
                 ${hasDue ? `<span style="color: var(--danger-color); font-weight: bold;"><i class="fa-solid fa-clock"></i> Cần ôn: ${stats.due}</span>` : `<span style="color: var(--success-color);"><i class="fa-solid fa-check"></i> Đã ôn xong</span>`}
             </div>
-            <button class="btn ${hasDue ? 'btn-primary' : 'btn-outline'} btn-sm" style="margin-top: 15px; width: 100%;" onclick="openFlashcards('${encodeURIComponent(topic)}')">
+            <button class="btn ${hasDue ? 'btn-primary' : 'btn-outline'} btn-sm" style="margin-top: 15px; width: 100%;">
                 <i class="fa-solid fa-layer-group"></i> Học Chủ Đề Này
             </button>
         `;
+        card.querySelector('button')?.addEventListener('click', () => openFlashcards(encodeURIComponent(topic)));
         container.appendChild(card);
     });
 }
@@ -4404,7 +4516,12 @@ window.openFlashcards = function(encodedTopic) {
     }
     
     currentFlashcardIndex = 0;
-    document.getElementById('flashcard-topic-title').innerHTML = `<i class="fa-solid fa-graduation-cap"></i> ${topic}`;
+    const topicTitle = document.getElementById('flashcard-topic-title');
+    if (topicTitle) {
+        const icon = document.createElement('i');
+        icon.className = 'fa-solid fa-graduation-cap';
+        topicTitle.replaceChildren(icon, document.createTextNode(` ${topic}`));
+    }
     document.getElementById('flashcard-modal').classList.add('active');
     
     renderCurrentFlashcard();

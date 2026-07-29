@@ -71,7 +71,7 @@ body {
 .app-container {
     display: flex;
     min-height: 100vh;
-    width: 100vw;
+    width: 100%;
     overflow-x: hidden;
 }
 
@@ -1890,6 +1890,11 @@ input:checked + .slider:before {
     display: flex !important;
     opacity: 1;
     pointer-events: auto !important;
+}
+
+/* Cấu hình AI có thể được mở từ các modal nhập file, nên phải nằm trên chúng. */
+#ai-config-modal {
+    z-index: 1200;
 }
 
 .modal-card {
