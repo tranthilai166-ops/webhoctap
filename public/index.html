@@ -21,7 +21,7 @@
     <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=20260729_v10">
 </head>
 <body>
     <div class="app-container">
@@ -444,7 +444,16 @@
                             <h3 style="margin: 0; display: flex; align-items: center; gap: 8px;"><i class="fa-solid fa-graduation-cap" style="color: var(--primary-color)"></i> Hệ Thống Spaced Repetition</h3>
                             <span style="font-size: 0.9rem; color: var(--text-secondary); margin-top: 4px;" id="vocab-stats-info">Đang tải dữ liệu...</span>
                         </div>
-                        <div class="header-right-actions" style="display:flex; gap:8px;">
+                        <div class="header-right-actions vocab-header-actions">
+                            <button class="btn btn-outline btn-sm" id="btn-add-vocab-manual">
+                                <i class="fa-solid fa-plus"></i> Thêm Từ
+                            </button>
+                            <button class="btn btn-outline btn-sm" id="btn-manage-vocabulary">
+                                <i class="fa-solid fa-list-check"></i> Quản Lý
+                            </button>
+                            <button class="btn btn-outline btn-sm" id="btn-export-vocabulary">
+                                <i class="fa-solid fa-download"></i> Sao Lưu
+                            </button>
                             <button class="btn btn-outline btn-sm" id="btn-open-import-vocab-modal" style="color: var(--primary-color); border-color: var(--primary-color);">
                                 <i class="fa-solid fa-cloud-arrow-up"></i> Quét & Thêm File
                             </button>
@@ -453,6 +462,44 @@
                 </div>
 
                 <div class="tasks-main-wrapper">
+                    <div class="vocab-summary-grid">
+                        <div class="vocab-summary-card">
+                            <span>Tổng số từ</span>
+                            <strong id="vocab-total-stat">0</strong>
+                        </div>
+                        <div class="vocab-summary-card due">
+                            <span>Cần học hôm nay</span>
+                            <strong id="vocab-due-stat">0</strong>
+                        </div>
+                        <div class="vocab-summary-card learning">
+                            <span>Đang ghi nhớ</span>
+                            <strong id="vocab-learning-stat">0</strong>
+                        </div>
+                        <div class="vocab-summary-card mastered">
+                            <span>Đã thành thạo</span>
+                            <strong id="vocab-mastered-stat">0</strong>
+                        </div>
+                    </div>
+
+                    <div class="card vocab-tools-card">
+                        <div class="vocab-tools-row">
+                            <div class="vocab-search-box">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                                <input type="search" id="vocab-search-input" placeholder="Tìm từ, nghĩa, ví dụ hoặc chủ đề...">
+                            </div>
+                            <select id="vocab-status-filter" aria-label="Lọc trạng thái từ vựng">
+                                <option value="all">Tất cả trạng thái</option>
+                                <option value="due">Cần học hôm nay</option>
+                                <option value="learning">Đang ghi nhớ</option>
+                                <option value="mastered">Đã thành thạo</option>
+                            </select>
+                            <button class="btn btn-danger btn-sm" id="btn-delete-all-vocabulary">
+                                <i class="fa-solid fa-trash-can"></i> Xóa Tất Cả
+                            </button>
+                        </div>
+                        <div class="vocab-feedback" id="vocab-feedback" role="status" aria-live="polite"></div>
+                    </div>
+
                     <!-- Danh sách chủ đề từ vựng -->
                     <div class="card full-task-card" style="height: 100%;">
                         <div class="card-header" style="border-bottom: 2px solid var(--primary-color);">
@@ -891,6 +938,105 @@ fa-check-double"></i> Nộp Bài</button>
         </div>
     </div>
 
+    <!-- MODAL: CONFIRM VOCABULARY DELETE -->
+    <div class="modal-overlay" id="vocab-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="vocab-confirm-title">
+        <div class="modal-content vocab-confirm-content">
+            <div class="modal-header">
+                <h3 id="vocab-confirm-title"><i class="fa-solid fa-triangle-exclamation"></i> Xác Nhận Xóa</h3>
+                <button class="icon-btn" id="btn-close-vocab-confirm" aria-label="Đóng xác nhận"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="vocab-confirm-message">
+                    <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+                    <p id="vocab-confirm-message">Bạn có chắc muốn xóa nội dung này?</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" id="btn-cancel-vocab-confirm">Hủy</button>
+                <button type="button" class="btn btn-danger" id="btn-confirm-vocab-delete">
+                    <i class="fa-solid fa-trash-can"></i> Xóa
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: ADD / EDIT VOCABULARY -->
+    <div class="modal-overlay" id="vocab-editor-modal">
+        <div class="modal-content" style="max-width: 560px;">
+            <div class="modal-header">
+                <h3 id="vocab-editor-title"><i class="fa-solid fa-spell-check"></i> Thêm Từ Vựng</h3>
+                <button class="icon-btn" id="btn-close-vocab-editor" aria-label="Đóng"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form id="vocab-editor-form">
+                <input type="hidden" id="vocab-editor-id">
+                <div class="modal-body">
+                    <div class="vocab-form-grid">
+                        <div class="form-group">
+                            <label for="vocab-word-input">Từ hoặc cụm từ tiếng Anh <span class="text-danger">*</span></label>
+                            <input type="text" id="vocab-word-input" required maxlength="120" placeholder="Ví dụ: take part in">
+                        </div>
+                        <div class="form-group">
+                            <label for="vocab-meaning-input">Nghĩa tiếng Việt <span class="text-danger">*</span></label>
+                            <input type="text" id="vocab-meaning-input" required maxlength="500" placeholder="Ví dụ: tham gia">
+                        </div>
+                        <div class="form-group full">
+                            <label for="vocab-example-input">Câu ví dụ</label>
+                            <textarea id="vocab-example-input" rows="3" maxlength="500" placeholder="Ví dụ: I take part in the English club."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="vocab-topic-input">Chủ đề</label>
+                            <input type="text" id="vocab-topic-input" maxlength="120" placeholder="Ví dụ: Trường học">
+                        </div>
+                        <div class="form-group">
+                            <label for="vocab-stage-input">Tiến độ ghi nhớ</label>
+                            <select id="vocab-stage-input">
+                                <option value="0">Mới / cần học</option>
+                                <option value="1">Đã nhớ lần 1</option>
+                                <option value="2">Đã nhớ lần 2</option>
+                                <option value="3">Gần thành thạo</option>
+                                <option value="4">Đã thành thạo</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="vocab-form-feedback" id="vocab-editor-feedback" role="alert"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" id="btn-cancel-vocab-editor">Hủy</button>
+                    <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Lưu Từ Vựng</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: VOCABULARY MANAGER -->
+    <div class="modal-overlay" id="vocab-manager-modal">
+        <div class="modal-content vocab-manager-content">
+            <div class="modal-header">
+                <div>
+                    <h3><i class="fa-solid fa-list-check"></i> Quản Lý Kho Từ Vựng</h3>
+                    <small id="vocab-manager-count">0 từ</small>
+                </div>
+                <button class="icon-btn" id="btn-close-vocab-manager" aria-label="Đóng"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="vocab-manager-filters">
+                    <div class="vocab-search-box">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="search" id="vocab-manager-search" placeholder="Tìm trong kho từ...">
+                    </div>
+                    <select id="vocab-manager-topic-filter" aria-label="Lọc chủ đề">
+                        <option value="all">Tất cả chủ đề</option>
+                    </select>
+                </div>
+                <div class="vocab-manager-list" id="vocab-manager-list"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" id="btn-close-vocab-manager-footer">Đóng</button>
+                <button class="btn btn-primary" id="btn-add-vocab-from-manager"><i class="fa-solid fa-plus"></i> Thêm Từ Mới</button>
+            </div>
+        </div>
+    </div>
+
     <!-- MODAL: UPLOAD VOCAB FILE -->
     <div class="modal-overlay" id="import-vocab-modal">
         <div class="modal-content" style="max-width: 500px;">
@@ -960,7 +1106,7 @@ fa-check-double"></i> Nộp Bài</button>
         }
     </style>
 
-    <script src="app.js?v=20260728_v8"></script>
+    <script src="app.js?v=20260729_v10"></script>
 </body>
 </html>
 

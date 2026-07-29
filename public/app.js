@@ -709,6 +709,11 @@ function performLogout() {
     state.exercises = [];
     state.vocabulary = [];
 
+    closeVocabEditor();
+    closeVocabManager();
+    resolveVocabConfirmation(false);
+    closeFlashcardModal();
+
     const nameEl = document.getElementById('sidebar-user-name');
     const idEl = document.getElementById('sidebar-user-id');
     const avatarEl = document.getElementById('sidebar-user-avatar');
@@ -4170,6 +4175,101 @@ function closeTakeQuizModal() {
 
 let currentFlashcards = [];
 let currentFlashcardIndex = 0;
+let vocabConfirmResolver = null;
+
+const VOCAB_STAGE_LABELS = [
+    'Mới / cần học',
+    'Đã nhớ lần 1',
+    'Đã nhớ lần 2',
+    'Gần thành thạo',
+    'Đã thành thạo'
+];
+
+function createVocabularyId() {
+    return 'voc-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+}
+
+function getVocabularyKey(word) {
+    return String(word || '').trim().toLocaleLowerCase('en');
+}
+
+function isVocabularyDue(vocab, now = Date.now()) {
+    return Number(vocab.stage || 0) === 0 ||
+        (Number(vocab.nextReviewDate || 0) > 0 && now >= Number(vocab.nextReviewDate));
+}
+
+function matchesVocabularyStatus(vocab, status, now = Date.now()) {
+    const stage = Math.max(0, Number(vocab.stage) || 0);
+    if (status === 'due') return isVocabularyDue(vocab, now);
+    if (status === 'learning') return stage > 0 && stage < 4;
+    if (status === 'mastered') return stage >= 4;
+    return true;
+}
+
+function showVocabFeedback(message, type = 'success') {
+    const feedback = document.getElementById('vocab-feedback');
+    if (!feedback) return;
+    feedback.className = `vocab-feedback ${type}`;
+    feedback.textContent = message;
+}
+
+function mergeVocabularyItems(items) {
+    if (!Array.isArray(state.vocabulary)) state.vocabulary = [];
+
+    const existingByWord = new Map(
+        state.vocabulary
+            .filter(item => item && item.word)
+            .map(item => [getVocabularyKey(item.word), item])
+    );
+    let added = 0;
+    let updated = 0;
+    let skipped = 0;
+
+    (Array.isArray(items) ? items : []).forEach(item => {
+        const word = String(item?.word || '').trim().slice(0, 120);
+        const meaning = String(item?.meaning || '').trim().slice(0, 500);
+        if (!word || !meaning) {
+            skipped++;
+            return;
+        }
+
+        const key = getVocabularyKey(word);
+        const existing = existingByWord.get(key);
+        if (existing) {
+            let changed = false;
+            if (!String(existing.meaning || '').trim() && meaning) {
+                existing.meaning = meaning;
+                changed = true;
+            }
+            if (!String(existing.example || '').trim() && item.example) {
+                existing.example = String(item.example).trim().slice(0, 500);
+                changed = true;
+            }
+            if ((!existing.topic || existing.topic === 'Chưa phân loại') && item.topic) {
+                existing.topic = String(item.topic).trim().slice(0, 120);
+                changed = true;
+            }
+            changed ? updated++ : skipped++;
+            return;
+        }
+
+        const vocab = {
+            id: createVocabularyId(),
+            word,
+            meaning,
+            example: String(item.example || '').trim().slice(0, 500),
+            topic: String(item.topic || 'Chưa phân loại').trim().slice(0, 120) || 'Chưa phân loại',
+            stage: 0,
+            lastReviewed: 0,
+            nextReviewDate: 0
+        };
+        state.vocabulary.push(vocab);
+        existingByWord.set(key, vocab);
+        added++;
+    });
+
+    return { added, updated, skipped };
+}
 
 function initVocabularySystem() {
     const btnOpenImport = document.getElementById('btn-open-import-vocab-modal');
@@ -4183,6 +4283,15 @@ function initVocabularySystem() {
     const btnCloseFlashcard = document.getElementById('btn-close-flashcard-modal');
     const btnForget = document.getElementById('btn-fc-forget');
     const btnRemember = document.getElementById('btn-fc-remember');
+    const btnAddManual = document.getElementById('btn-add-vocab-manual');
+    const btnManage = document.getElementById('btn-manage-vocabulary');
+    const btnExport = document.getElementById('btn-export-vocabulary');
+    const btnDeleteAll = document.getElementById('btn-delete-all-vocabulary');
+    const vocabSearch = document.getElementById('vocab-search-input');
+    const vocabStatusFilter = document.getElementById('vocab-status-filter');
+    const editorForm = document.getElementById('vocab-editor-form');
+    const managerSearch = document.getElementById('vocab-manager-search');
+    const managerTopicFilter = document.getElementById('vocab-manager-topic-filter');
 
     if (btnOpenImport) btnOpenImport.addEventListener('click', () => document.getElementById('import-vocab-modal').classList.add('active'));
     if (btnCloseImport) btnCloseImport.addEventListener('click', () => document.getElementById('import-vocab-modal').classList.remove('active'));
@@ -4214,6 +4323,29 @@ function initVocabularySystem() {
     if (btnCloseFlashcard) btnCloseFlashcard.addEventListener('click', closeFlashcardModal);
     if (btnForget) btnForget.addEventListener('click', handleVocabForget);
     if (btnRemember) btnRemember.addEventListener('click', handleVocabRemember);
+
+    btnAddManual?.addEventListener('click', () => openVocabEditor());
+    btnManage?.addEventListener('click', () => openVocabManager());
+    btnExport?.addEventListener('click', exportVocabularyBackup);
+    btnDeleteAll?.addEventListener('click', deleteAllVocabulary);
+    vocabSearch?.addEventListener('input', renderVocabTopics);
+    vocabStatusFilter?.addEventListener('change', renderVocabTopics);
+
+    document.getElementById('btn-close-vocab-editor')?.addEventListener('click', closeVocabEditor);
+    document.getElementById('btn-cancel-vocab-editor')?.addEventListener('click', closeVocabEditor);
+    editorForm?.addEventListener('submit', saveVocabularyFromEditor);
+
+    document.getElementById('btn-close-vocab-manager')?.addEventListener('click', closeVocabManager);
+    document.getElementById('btn-close-vocab-manager-footer')?.addEventListener('click', closeVocabManager);
+    document.getElementById('btn-add-vocab-from-manager')?.addEventListener('click', () => {
+        closeVocabManager();
+        openVocabEditor();
+    });
+    document.getElementById('btn-close-vocab-confirm')?.addEventListener('click', () => resolveVocabConfirmation(false));
+    document.getElementById('btn-cancel-vocab-confirm')?.addEventListener('click', () => resolveVocabConfirmation(false));
+    document.getElementById('btn-confirm-vocab-delete')?.addEventListener('click', () => resolveVocabConfirmation(true));
+    managerSearch?.addEventListener('input', renderVocabManager);
+    managerTopicFilter?.addEventListener('change', renderVocabManager);
     
     const tabVocab = document.getElementById('tab-vocabulary');
     if (tabVocab) {
@@ -4226,6 +4358,278 @@ function initVocabularySystem() {
         });
         observer.observe(tabVocab, { attributes: true, attributeFilter: ['class'] });
     }
+}
+
+function openVocabEditor(vocabId = null, preferredTopic = '') {
+    const vocab = vocabId
+        ? (state.vocabulary || []).find(item => item.id === vocabId)
+        : null;
+    const title = document.getElementById('vocab-editor-title');
+    const feedback = document.getElementById('vocab-editor-feedback');
+
+    document.getElementById('vocab-editor-id').value = vocab?.id || '';
+    document.getElementById('vocab-word-input').value = vocab?.word || '';
+    document.getElementById('vocab-meaning-input').value = vocab?.meaning || '';
+    document.getElementById('vocab-example-input').value = vocab?.example || '';
+    document.getElementById('vocab-topic-input').value = vocab?.topic || preferredTopic || '';
+    document.getElementById('vocab-stage-input').value = String(Math.min(4, Math.max(0, Number(vocab?.stage) || 0)));
+
+    if (title) {
+        title.innerHTML = vocab
+            ? '<i class="fa-solid fa-pen"></i> Sửa Từ Vựng'
+            : '<i class="fa-solid fa-spell-check"></i> Thêm Từ Vựng';
+    }
+    if (feedback) {
+        feedback.textContent = '';
+        feedback.className = 'vocab-form-feedback';
+    }
+
+    document.getElementById('vocab-editor-modal')?.classList.add('active');
+    document.getElementById('vocab-word-input')?.focus();
+}
+
+function closeVocabEditor() {
+    document.getElementById('vocab-editor-modal')?.classList.remove('active');
+}
+
+function saveVocabularyFromEditor(event) {
+    event?.preventDefault();
+    if (!Array.isArray(state.vocabulary)) state.vocabulary = [];
+
+    const vocabId = document.getElementById('vocab-editor-id').value;
+    const word = document.getElementById('vocab-word-input').value.trim();
+    const meaning = document.getElementById('vocab-meaning-input').value.trim();
+    const example = document.getElementById('vocab-example-input').value.trim();
+    const topic = document.getElementById('vocab-topic-input').value.trim() || 'Chưa phân loại';
+    const stage = Math.min(4, Math.max(0, Number(document.getElementById('vocab-stage-input').value) || 0));
+    const feedback = document.getElementById('vocab-editor-feedback');
+
+    if (!word || !meaning) {
+        if (feedback) {
+            feedback.className = 'vocab-form-feedback error';
+            feedback.textContent = 'Vui lòng nhập đầy đủ từ tiếng Anh và nghĩa tiếng Việt.';
+        }
+        return;
+    }
+
+    const duplicate = state.vocabulary.find(item =>
+        item.id !== vocabId && getVocabularyKey(item.word) === getVocabularyKey(word)
+    );
+    if (duplicate) {
+        if (feedback) {
+            feedback.className = 'vocab-form-feedback warning';
+            feedback.textContent = `Từ “${word}” đã tồn tại trong chủ đề “${duplicate.topic || 'Chưa phân loại'}”.`;
+        }
+        return;
+    }
+
+    const existing = vocabId ? state.vocabulary.find(item => item.id === vocabId) : null;
+    if (existing) {
+        const stageChanged = Number(existing.stage || 0) !== stage;
+        existing.word = word.slice(0, 120);
+        existing.meaning = meaning.slice(0, 500);
+        existing.example = example.slice(0, 500);
+        existing.topic = topic.slice(0, 120);
+        existing.stage = stage;
+        if (stageChanged) {
+            existing.lastReviewed = stage > 0 ? Date.now() : 0;
+            existing.nextReviewDate = stage > 0 ? calculateNextReviewDate(stage) : 0;
+        }
+    } else {
+        state.vocabulary.push({
+            id: createVocabularyId(),
+            word: word.slice(0, 120),
+            meaning: meaning.slice(0, 500),
+            example: example.slice(0, 500),
+            topic: topic.slice(0, 120),
+            stage,
+            lastReviewed: stage > 0 ? Date.now() : 0,
+            nextReviewDate: stage > 0 ? calculateNextReviewDate(stage) : 0
+        });
+    }
+
+    saveUserData();
+    closeVocabEditor();
+    renderVocabTopics();
+    renderVocabManager();
+    showVocabFeedback(existing ? `Đã cập nhật từ “${word}”.` : `Đã thêm từ “${word}”.`);
+}
+
+function openVocabManager(topic = 'all') {
+    const searchInput = document.getElementById('vocab-manager-search');
+    if (searchInput) searchInput.value = '';
+    refreshVocabManagerTopicOptions(topic);
+    renderVocabManager();
+    document.getElementById('vocab-manager-modal')?.classList.add('active');
+}
+
+function closeVocabManager() {
+    document.getElementById('vocab-manager-modal')?.classList.remove('active');
+}
+
+function refreshVocabManagerTopicOptions(preferredTopic = 'all') {
+    const topicFilter = document.getElementById('vocab-manager-topic-filter');
+    if (!topicFilter) return;
+
+    const topics = [...new Set((state.vocabulary || []).map(item => item.topic || 'Chưa phân loại'))]
+        .sort((a, b) => a.localeCompare(b, 'vi'));
+    topicFilter.replaceChildren(new Option('Tất cả chủ đề', 'all'));
+    topics.forEach(topic => topicFilter.add(new Option(topic, topic)));
+    topicFilter.value = topics.includes(preferredTopic) ? preferredTopic : 'all';
+}
+
+function requestVocabConfirmation(message, title = 'Xác Nhận Xóa') {
+    if (vocabConfirmResolver) {
+        vocabConfirmResolver(false);
+    }
+
+    const modal = document.getElementById('vocab-confirm-modal');
+    const titleElement = document.getElementById('vocab-confirm-title');
+    const messageElement = document.getElementById('vocab-confirm-message');
+    if (!modal || !titleElement || !messageElement) return Promise.resolve(false);
+
+    titleElement.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> ${escapeHTML(title)}`;
+    messageElement.textContent = message;
+    modal.classList.add('active');
+    document.getElementById('btn-cancel-vocab-confirm')?.focus();
+
+    return new Promise(resolve => {
+        vocabConfirmResolver = resolve;
+    });
+}
+
+function resolveVocabConfirmation(confirmed) {
+    document.getElementById('vocab-confirm-modal')?.classList.remove('active');
+    const resolver = vocabConfirmResolver;
+    vocabConfirmResolver = null;
+    resolver?.(Boolean(confirmed));
+}
+
+function renderVocabManager() {
+    const container = document.getElementById('vocab-manager-list');
+    if (!container) return;
+
+    const search = (document.getElementById('vocab-manager-search')?.value || '').trim().toLocaleLowerCase('vi');
+    const topic = document.getElementById('vocab-manager-topic-filter')?.value || 'all';
+    const filtered = (state.vocabulary || [])
+        .filter(item => {
+            const matchesTopic = topic === 'all' || (item.topic || 'Chưa phân loại') === topic;
+            const haystack = [item.word, item.meaning, item.example, item.topic].join(' ').toLocaleLowerCase('vi');
+            return matchesTopic && (!search || haystack.includes(search));
+        })
+        .sort((a, b) => String(a.word || '').localeCompare(String(b.word || ''), 'en'));
+
+    const count = document.getElementById('vocab-manager-count');
+    if (count) count.textContent = `${filtered.length} / ${(state.vocabulary || []).length} từ`;
+    container.replaceChildren();
+
+    if (!filtered.length) {
+        container.innerHTML = `<div class="empty-state">
+            <div class="empty-icon"><i class="fa-solid fa-magnifying-glass"></i></div>
+            <p>Không tìm thấy từ vựng phù hợp.</p>
+        </div>`;
+        return;
+    }
+
+    filtered.forEach(item => {
+        const row = document.createElement('div');
+        const stage = Math.min(4, Math.max(0, Number(item.stage) || 0));
+        row.className = 'vocab-manager-row';
+        row.innerHTML = `
+            <div class="vocab-manager-word">
+                <strong>${escapeHTML(item.word)}</strong>
+                <small>${escapeHTML(item.topic || 'Chưa phân loại')}</small>
+            </div>
+            <div class="vocab-manager-meaning">
+                <span>${escapeHTML(item.meaning)}</span>
+                <small>${escapeHTML(item.example || 'Chưa có câu ví dụ')}</small>
+            </div>
+            <span class="vocab-stage-badge ${stage >= 4 ? 'mastered' : ''}">${VOCAB_STAGE_LABELS[stage]}</span>
+            <div class="vocab-manager-actions">
+                <button class="icon-btn edit vocab-edit-btn" title="Sửa từ" aria-label="Sửa ${escapeHTML(item.word)}"><i class="fa-solid fa-pen"></i></button>
+                <button class="icon-btn danger vocab-delete-btn" title="Xóa từ" aria-label="Xóa ${escapeHTML(item.word)}"><i class="fa-solid fa-trash-can"></i></button>
+            </div>
+        `;
+        row.querySelector('.vocab-edit-btn')?.addEventListener('click', () => {
+            closeVocabManager();
+            openVocabEditor(item.id);
+        });
+        row.querySelector('.vocab-delete-btn')?.addEventListener('click', () => deleteVocabularyWord(item.id));
+        container.appendChild(row);
+    });
+}
+
+async function deleteVocabularyWord(vocabId) {
+    const vocab = (state.vocabulary || []).find(item => item.id === vocabId);
+    if (!vocab || !(await requestVocabConfirmation(
+        `Từ “${vocab.word}” sẽ bị xóa khỏi kho từ vựng.`,
+        'Xóa Từ Vựng'
+    ))) return;
+
+    state.vocabulary = state.vocabulary.filter(item => item.id !== vocabId);
+    saveUserData();
+    renderVocabTopics();
+    refreshVocabManagerTopicOptions(document.getElementById('vocab-manager-topic-filter')?.value || 'all');
+    renderVocabManager();
+    showVocabFeedback(`Đã xóa từ “${vocab.word}”.`, 'warning');
+}
+
+async function deleteVocabularyTopic(topic) {
+    const count = (state.vocabulary || []).filter(item => (item.topic || 'Chưa phân loại') === topic).length;
+    if (!count || !(await requestVocabConfirmation(
+        `Toàn bộ ${count} từ trong chủ đề “${topic}” sẽ bị xóa.`,
+        'Xóa Chủ Đề'
+    ))) return;
+
+    state.vocabulary = state.vocabulary.filter(item => (item.topic || 'Chưa phân loại') !== topic);
+    saveUserData();
+    renderVocabTopics();
+    renderVocabManager();
+    showVocabFeedback(`Đã xóa chủ đề “${topic}” và ${count} từ liên quan.`, 'warning');
+}
+
+async function deleteAllVocabulary() {
+    const count = (state.vocabulary || []).length;
+    if (!count) {
+        showVocabFeedback('Kho từ vựng hiện đang trống.', 'warning');
+        return;
+    }
+    if (!(await requestVocabConfirmation(
+        `Toàn bộ ${count} từ vựng sẽ bị xóa. Hành động này không thể hoàn tác.`,
+        'Xóa Toàn Bộ Từ Vựng'
+    ))) return;
+
+    state.vocabulary = [];
+    saveUserData();
+    renderVocabTopics();
+    closeVocabManager();
+    showVocabFeedback('Đã xóa toàn bộ kho từ vựng.', 'warning');
+}
+
+function exportVocabularyBackup() {
+    const vocabulary = state.vocabulary || [];
+    if (!vocabulary.length) {
+        showVocabFeedback('Chưa có từ vựng để sao lưu.', 'warning');
+        return;
+    }
+
+    const payload = {
+        app: 'StudyFlow',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        vocabulary
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `studyflow-vocabulary-${getFormattedDate(0)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    // Giữ Blob URL đủ lâu để trình duyệt bắt đầu tải tệp trước khi giải phóng.
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+    showVocabFeedback(`Đã xuất bản sao lưu gồm ${vocabulary.length} từ.`);
 }
 
 async function startVocabImport() {
@@ -4358,25 +4762,16 @@ async function startVocabImport() {
         }
 
         if (resJson && Array.isArray(resJson) && resJson.length > 0) {
-            if (!state.vocabulary) state.vocabulary = [];
-
-            resJson.forEach(item => {
-                state.vocabulary.push({
-                    id: 'voc-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
-                    word: item.word,
-                    meaning: item.meaning,
-                    example: item.example || '',
-                    topic: item.topic || 'Chưa phân loại',
-                    stage: 0,
-                    lastReviewed: 0,
-                    nextReviewDate: 0
-                });
-            });
-
+            const mergeResult = mergeVocabularyItems(resJson);
             saveUserData();
             document.getElementById('import-vocab-modal').classList.remove('active');
             renderVocabTopics();
-            alert("🎉 Đã nhập thành công " + resJson.length + " từ vựng mới vào hệ thống!");
+            const details = [
+                `${mergeResult.added} từ mới`,
+                mergeResult.updated ? `${mergeResult.updated} từ được bổ sung dữ liệu` : '',
+                mergeResult.skipped ? `${mergeResult.skipped} từ trùng được bỏ qua` : ''
+            ].filter(Boolean).join(', ');
+            showVocabFeedback(`Đã xử lý tài liệu: ${details}.`, mergeResult.added ? 'success' : 'warning');
         } else {
             throw new Error('Không thể bóc tách từ vựng từ file này.');
         }
@@ -4436,68 +4831,105 @@ function renderVocabTopics() {
     const statsInfo = document.getElementById('vocab-stats-info');
     const badge = document.getElementById('due-vocab-count-badge');
     if(!container) return;
-    
+
     if(!state.vocabulary) state.vocabulary = [];
-    
+
     const now = Date.now();
-    let dueCount = 0;
-    
-    const topicsMap = {};
-    
-    state.vocabulary.forEach(v => {
-        if(!topicsMap[v.topic]) topicsMap[v.topic] = { total: 0, due: 0, mastered: 0 };
-        topicsMap[v.topic].total++;
-        
-        const isDue = (v.stage === 0) || (v.nextReviewDate > 0 && now >= v.nextReviewDate);
-        if (isDue) {
-            topicsMap[v.topic].due++;
-            dueCount++;
-        }
-        if (v.stage >= 4) {
-            topicsMap[v.topic].mastered++;
-        }
+    const dueCount = state.vocabulary.filter(item => isVocabularyDue(item, now)).length;
+    const learningCount = state.vocabulary.filter(item => Number(item.stage || 0) > 0 && Number(item.stage || 0) < 4).length;
+    const masteredCount = state.vocabulary.filter(item => Number(item.stage || 0) >= 4).length;
+    const search = (document.getElementById('vocab-search-input')?.value || '').trim().toLocaleLowerCase('vi');
+    const status = document.getElementById('vocab-status-filter')?.value || 'all';
+    const filteredVocabulary = state.vocabulary.filter(item => {
+        const haystack = [item.word, item.meaning, item.example, item.topic].join(' ').toLocaleLowerCase('vi');
+        return (!search || haystack.includes(search)) && matchesVocabularyStatus(item, status, now);
     });
-    
-    if(statsInfo) statsInfo.innerHTML = `Bạn có <strong>${dueCount}</strong> từ vựng cần học/ôn tập hôm nay.`;
+
+    const topicsMap = new Map();
+    filteredVocabulary.forEach(v => {
+        const topic = String(v.topic || 'Chưa phân loại');
+        if(!topicsMap.has(topic)) topicsMap.set(topic, { total: 0, due: 0, mastered: 0 });
+        const stats = topicsMap.get(topic);
+        stats.total++;
+        if (isVocabularyDue(v, now)) stats.due++;
+        if (Number(v.stage || 0) >= 4) stats.mastered++;
+    });
+
+    if(statsInfo) {
+        statsInfo.textContent = `Bạn có ${state.vocabulary.length} từ, trong đó ${dueCount} từ cần học/ôn hôm nay.`;
+    }
+    document.getElementById('vocab-total-stat')?.replaceChildren(document.createTextNode(String(state.vocabulary.length)));
+    document.getElementById('vocab-due-stat')?.replaceChildren(document.createTextNode(String(dueCount)));
+    document.getElementById('vocab-learning-stat')?.replaceChildren(document.createTextNode(String(learningCount)));
+    document.getElementById('vocab-mastered-stat')?.replaceChildren(document.createTextNode(String(masteredCount)));
+
+    const deleteAllButton = document.getElementById('btn-delete-all-vocabulary');
+    const exportButton = document.getElementById('btn-export-vocabulary');
+    const manageButton = document.getElementById('btn-manage-vocabulary');
+    if (deleteAllButton) deleteAllButton.disabled = state.vocabulary.length === 0;
+    if (exportButton) exportButton.disabled = state.vocabulary.length === 0;
+    if (manageButton) manageButton.disabled = state.vocabulary.length === 0;
+
     if (badge) {
         badge.textContent = dueCount;
         badge.style.display = dueCount > 0 ? 'inline-block' : 'none';
     }
-    
-    container.innerHTML = '';
-    
-    if (Object.keys(topicsMap).length === 0) {
+
+    container.replaceChildren();
+
+    if (state.vocabulary.length === 0) {
         container.innerHTML = `<div class="empty-state" style="grid-column: 1 / -1;">
             <div class="empty-icon"><i class="fa-solid fa-box-open"></i></div>
-            <p>Chưa có từ vựng nào. Hãy quét file để thêm!</p>
+            <p>Chưa có từ vựng nào. Hãy thêm thủ công hoặc quét tài liệu để bắt đầu!</p>
         </div>`;
         return;
     }
-    
-    Object.keys(topicsMap).forEach(topic => {
-        const stats = topicsMap[topic];
-        const hasDue = stats.due > 0;
-        
-        const card = document.createElement('div');
-        card.className = 'task-item';
-        card.style.flexDirection = 'column';
-        card.style.alignItems = 'flex-start';
-        card.style.cursor = 'pointer';
-        card.style.borderLeft = hasDue ? '4px solid var(--danger-color)' : '4px solid var(--success-color)';
-        
-        card.innerHTML = `
-            <h4 style="margin:0; font-size: 1.1rem;">${escapeHTML(topic)}</h4>
-            <div style="margin-top: 8px; font-size: 0.9rem; color: var(--text-secondary); width: 100%; display: flex; justify-content: space-between;">
-                <span>Tổng: ${stats.total} từ</span>
-                ${hasDue ? `<span style="color: var(--danger-color); font-weight: bold;"><i class="fa-solid fa-clock"></i> Cần ôn: ${stats.due}</span>` : `<span style="color: var(--success-color);"><i class="fa-solid fa-check"></i> Đã ôn xong</span>`}
-            </div>
-            <button class="btn ${hasDue ? 'btn-primary' : 'btn-outline'} btn-sm" style="margin-top: 15px; width: 100%;">
-                <i class="fa-solid fa-layer-group"></i> Học Chủ Đề Này
-            </button>
-        `;
-        card.querySelector('button')?.addEventListener('click', () => openFlashcards(encodeURIComponent(topic)));
-        container.appendChild(card);
-    });
+
+    if (topicsMap.size === 0) {
+        container.innerHTML = `<div class="empty-state" style="grid-column: 1 / -1;">
+            <div class="empty-icon"><i class="fa-solid fa-filter-circle-xmark"></i></div>
+            <p>Không tìm thấy từ vựng phù hợp với bộ lọc hiện tại.</p>
+        </div>`;
+        return;
+    }
+
+    [...topicsMap.entries()]
+        .sort(([topicA], [topicB]) => topicA.localeCompare(topicB, 'vi'))
+        .forEach(([topic, stats]) => {
+            const hasDue = stats.due > 0;
+            const masteredPercent = stats.total ? Math.round((stats.mastered / stats.total) * 100) : 0;
+
+            const card = document.createElement('div');
+            card.className = 'task-item vocab-topic-card';
+            card.style.borderLeft = hasDue ? '4px solid var(--danger-color)' : '4px solid var(--success-color)';
+
+            card.innerHTML = `
+                <h4 style="margin:0; font-size: 1.1rem;">${escapeHTML(topic)}</h4>
+                <div style="font-size: 0.9rem; color: var(--text-secondary); width: 100%; display: flex; justify-content: space-between; gap: 8px;">
+                    <span>Tổng: ${stats.total} từ</span>
+                    ${hasDue ? `<span style="color: var(--danger-color); font-weight: bold;"><i class="fa-solid fa-clock"></i> Cần ôn: ${stats.due}</span>` : `<span style="color: var(--success-color);"><i class="fa-solid fa-check"></i> Đã ôn xong</span>`}
+                </div>
+                <div class="vocab-topic-progress" title="${masteredPercent}% thành thạo">
+                    <span style="width: ${masteredPercent}%"></span>
+                </div>
+                <small style="color: var(--text-secondary);">${masteredPercent}% thành thạo</small>
+                <div class="vocab-topic-actions">
+                    <button class="btn ${hasDue ? 'btn-primary' : 'btn-outline'} btn-sm vocab-study-btn">
+                        <i class="fa-solid fa-layer-group"></i> ${hasDue ? 'Học Ngay' : 'Ôn Lại'}
+                    </button>
+                    <button class="btn btn-outline btn-sm vocab-manage-topic-btn" title="Quản lý chủ đề" aria-label="Quản lý chủ đề ${escapeHTML(topic)}">
+                        <i class="fa-solid fa-list"></i>
+                    </button>
+                    <button class="btn btn-danger btn-sm vocab-delete-topic-btn" title="Xóa chủ đề" aria-label="Xóa chủ đề ${escapeHTML(topic)}">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </div>
+            `;
+            card.querySelector('.vocab-study-btn')?.addEventListener('click', () => openFlashcards(encodeURIComponent(topic)));
+            card.querySelector('.vocab-manage-topic-btn')?.addEventListener('click', () => openVocabManager(topic));
+            card.querySelector('.vocab-delete-topic-btn')?.addEventListener('click', () => deleteVocabularyTopic(topic));
+            container.appendChild(card);
+        });
 }
 
 window.toggleFlashcardFlip = function() {
@@ -4507,11 +4939,14 @@ window.toggleFlashcardFlip = function() {
 window.openFlashcards = function(encodedTopic) {
     const topic = decodeURIComponent(encodedTopic);
     const now = Date.now();
-    
-    currentFlashcards = state.vocabulary.filter(v => v.topic === topic && ((v.stage === 0) || (v.nextReviewDate > 0 && now >= v.nextReviewDate)));
-    
+
+    const topicVocabulary = state.vocabulary.filter(v => (v.topic || 'Chưa phân loại') === topic);
+    const dueVocabulary = topicVocabulary.filter(v => isVocabularyDue(v, now));
+    // Khi không còn từ đến hạn, vẫn cho phép người học chủ động ôn lại cả chủ đề.
+    currentFlashcards = dueVocabulary.length ? dueVocabulary : topicVocabulary;
+
     if (currentFlashcards.length === 0) {
-        alert('Tuyệt vời! Bạn đã hoàn thành tất cả từ vựng cần ôn trong chủ đề này hôm nay.');
+        showVocabFeedback('Chủ đề này hiện không có từ vựng.', 'warning');
         return;
     }
     

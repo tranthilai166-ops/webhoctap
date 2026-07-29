@@ -47,7 +47,11 @@ test('health check và trang web hoạt động', async () => {
 
     const pageResponse = await request('/');
     assert.equal(pageResponse.status, 200);
-    assert.match(await pageResponse.text(), /StudyFlow/);
+    const page = await pageResponse.text();
+    assert.match(page, /StudyFlow/);
+    assert.match(page, /id="btn-add-vocab-manual"/);
+    assert.match(page, /id="vocab-manager-modal"/);
+    assert.match(page, /id="vocab-confirm-modal"/);
 });
 
 test('đăng ký, đăng nhập và bảo vệ mật khẩu', async () => {
