@@ -4134,7 +4134,6 @@ async function startVocabImport() {
     try {
         progressText.textContent = 'Đang đọc nội dung file...';
 
-        let base64String = '';
         let mimeType = file.type || 'image/png';
         let extractedText = '';
 
@@ -4154,21 +4153,38 @@ async function startVocabImport() {
 
         let resJson = null;
 
-        // --- CHẾ ĐỘ 1: QUÉT OFFLINE TỰ ĐỘNG (KHÔNG CẦN API KEY, THÀNH CÔNG 100%) ---
-        if (aiProvider === 'offline' || !geminiApiKey) {
+        // ChatGPT xử lý được cả chữ, hình và các trang PDF đã render.
+        if (aiProvider === 'openai') {
+            progressText.textContent = 'ChatGPT đang đọc tài liệu và tạo thẻ từ vựng...';
+            const dataUrl = file.type.startsWith('image/') ? await readFileAsDataURL(file) : '';
+            const imageDataUrls = fileNameLower.endsWith('.pdf') ? await renderPDFPagesForAI(file) : [];
+            const response = await fetch('/api/ai/extract-vocabulary', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dataUrl, imageDataUrls, extractedText, fileName: file.name })
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                const message = result.error === 'openai_not_configured'
+                    ? 'Server chưa cấu hình OPENAI_API_KEY.'
+                    : (result.error || 'Không thể phân tích tài liệu bằng ChatGPT.');
+                throw new Error(message);
+            }
+            resJson = result.vocabulary;
+        // Chế độ offline chỉ phù hợp cho PDF/TXT có thể trích xuất được chữ.
+        } else if (aiProvider === 'offline' || !geminiApiKey) {
             progressText.textContent = 'Đang tự động bóc tách từ vựng từ tài liệu...';
-            const textToProcess = extractedText || file.name;
+            if (!extractedText.trim()) {
+                throw new Error('Không đọc được chữ trong file này. Hãy chọn ChatGPT hoặc Gemini để quét ảnh/PDF dạng scan.');
+            }
+            const textToProcess = extractedText;
             resJson = parseVocabularyOffline(textToProcess, file.name);
         } else {
             // --- CHẾ ĐỘ 2: GỌI GOOGLE GEMINI AI ---
             progressText.textContent = 'Đang kết nối AI để bóc tách từ vựng (khoảng 5-15 giây)...';
 
-            const base64Data = await new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(reader.result);
-                reader.onerror = reject;
-                reader.readAsDataURL(file);
-            });
+            const base64Data = await readFileAsDataURL(file);
+            let base64String = '';
 
             if (typeof base64Data === 'string' && base64Data.includes(';base64,')) {
                 mimeType = base64Data.split(';')[0].split(':')[1] || mimeType;
@@ -4207,7 +4223,7 @@ async function startVocabImport() {
                         const data = await response.json();
                         let resText = data.candidates?.[0]?.content?.parts?.[0]?.text;
                         if (resText) {
-                            resText = resText.replace(new RegExp(b + b + b + 'json', 'gi'), '').replace(new RegExp(b + b + b, 'g'), '').trim();
+                            resText = resText.replace(/```json/gi, '').replace(/```/g, '').trim();
                             const jsonMatch = resText.match(/\[[\s\S]*\]/);
                             resJson = JSON.parse(jsonMatch ? jsonMatch[0] : resText);
                             if (Array.isArray(resJson) && resJson.length > 0) break;
@@ -4225,7 +4241,7 @@ async function startVocabImport() {
             // Fallback sang chế độ Offline nếu online AI bị lỗi quota/mạng
             if (!resJson || !Array.isArray(resJson) || resJson.length === 0) {
                 console.warn("Online AI failed, falling back to Offline Scanner:", lastError);
-                const textToProcess = extractedText || file.name;
+                const textToProcess = extractedText;
                 resJson = parseVocabularyOffline(textToProcess, file.name);
             }
         }
@@ -4261,6 +4277,15 @@ async function startVocabImport() {
         fileInput.value = '';
         document.getElementById('vocab-file-name').textContent = '';
     }
+}
+
+function readFileAsDataURL(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
 }
 
 async function renderPDFPagesForAI(file) {

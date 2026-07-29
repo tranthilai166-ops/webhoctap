@@ -114,6 +114,68 @@ hoặc:
     }
 });
 
+app.post('/api/ai/extract-vocabulary', async (req, res) => {
+    const client = getOpenAIClient();
+    if (!client) return res.status(503).json({ ok: false, error: 'openai_not_configured' });
+
+    const { dataUrl, imageDataUrls = [], extractedText = '', fileName = '' } = req.body || {};
+    if (!dataUrl && !imageDataUrls.length && !extractedText.trim()) {
+        return res.status(400).json({ ok: false, error: 'missing_input' });
+    }
+
+    const content = [{
+        type: 'text',
+        text: `Bạn là trợ lý học tiếng Anh. Hãy trích xuất các từ hoặc cụm từ tiếng Anh thực sự có trong tài liệu${fileName ? ` "${fileName}"` : ''}.
+Với mỗi mục, cung cấp nghĩa tiếng Việt ngắn gọn, một ví dụ tiếng Anh đơn giản, và chủ đề phù hợp.
+Không bịa thêm từ không xuất hiện trong tài liệu. Bỏ qua tên riêng, số, câu quá dài và từ không phải tiếng Anh.
+Trả về JSON thuần theo dạng {"vocabulary":[{"word":"...","meaning":"...","example":"...","topic":"..."}]}.`
+    }];
+    if (extractedText.trim()) content.push({ type: 'text', text: `Nội dung văn bản trích xuất:\n${extractedText.slice(0, 50000)}` });
+    if (dataUrl && /^data:image\/(png|jpeg|jpg|webp);base64,/i.test(dataUrl)) {
+        content.push({ type: 'image_url', image_url: { url: dataUrl } });
+    }
+    imageDataUrls.slice(0, 5).forEach(image => {
+        if (/^data:image\/(png|jpeg|jpg|webp);base64,/i.test(image)) {
+            content.push({ type: 'image_url', image_url: { url: image } });
+        }
+    });
+
+    try {
+        const completion = await client.chat.completions.create({
+            model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+            temperature: 0.1,
+            response_format: { type: 'json_object' },
+            messages: [
+                { role: 'system', content: 'Bạn luôn trả về JSON hợp lệ, không có markdown.' },
+                { role: 'user', content }
+            ]
+        });
+        const parsed = JSON.parse(completion.choices?.[0]?.message?.content || '{}');
+        const vocabulary = Array.isArray(parsed) ? parsed : parsed.vocabulary;
+        if (!Array.isArray(vocabulary) || !vocabulary.length) throw new Error('empty_vocabulary');
+
+        const seen = new Set();
+        const normalized = vocabulary.slice(0, 100).map(item => {
+            const word = String(item.word || '').trim();
+            const meaning = String(item.meaning || '').trim();
+            const key = word.toLowerCase();
+            if (!word || !meaning || seen.has(key)) return null;
+            seen.add(key);
+            return {
+                word: word.slice(0, 120),
+                meaning: meaning.slice(0, 500),
+                example: String(item.example || '').trim().slice(0, 500),
+                topic: String(item.topic || 'Tài liệu vựng').trim().slice(0, 120)
+            };
+        }).filter(Boolean);
+        if (!normalized.length) throw new Error('invalid_vocabulary');
+        res.json({ ok: true, vocabulary: normalized });
+    } catch (err) {
+        console.error('[OpenAI vocabulary]', err);
+        res.status(502).json({ ok: false, error: err.message || 'ai_generation_failed' });
+    }
+});
+
 // Chặn ký tự lạ trong userId để tránh path traversal khi ghi file
 function safeUserId(userId) {
     return String(userId || '').replace(/[^a-zA-Z0-9_\-]/g, '');
